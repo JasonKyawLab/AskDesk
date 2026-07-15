@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_USER: askdesk
+      POSTGRES_PASSWORD: askdesk
+      POSTGRES_DB: askdesk
+    ports:
+      # Host 5433 to avoid clashing with a locally installed Postgres on 5432.
+      - "5433:5432"
+    volumes:
+      - askdesk_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U askdesk"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  askdesk_pg:

@@ -2,18 +2,26 @@
 package server
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 )
 
+// DB is the database dependency the server needs for readiness checks.
+// A nil DB means the service runs without a database.
+type DB interface {
+	Ping(ctx context.Context) error
+}
+
 // Server holds the dependencies shared by all HTTP handlers.
 type Server struct {
 	log *slog.Logger
+	db  DB
 }
 
-// New constructs a Server.
-func New(log *slog.Logger) *Server {
-	return &Server{log: log}
+// New constructs a Server. db may be nil.
+func New(log *slog.Logger, db DB) *Server {
+	return &Server{log: log, db: db}
 }
 
 // Routes builds the service handler wrapped in the middleware chain

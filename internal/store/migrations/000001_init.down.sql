@@ -1,0 +1,5 @@
+DROP TABLE IF EXISTS admins;
+DROP TABLE IF EXISTS unanswered_queue;
+DROP TABLE IF EXISTS conversations;
+DROP TABLE IF EXISTS faqs;
+DROP TABLE IF EXISTS businesses;

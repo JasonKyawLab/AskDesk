@@ -10,17 +10,19 @@ import (
 
 // Config holds all runtime configuration for the service.
 type Config struct {
-	Env      string // "development" or "production"
-	HTTPPort int
-	LogLevel string // debug, info, warn, error
+	Env         string // "development" or "production"
+	HTTPPort    int
+	LogLevel    string // debug, info, warn, error
+	DatabaseURL string // postgres DSN; empty runs without a database
 }
 
 // Load reads configuration from the environment, applying development-friendly
 // defaults so a bare `go run` works without setup.
 func Load() (*Config, error) {
 	cfg := &Config{
-		Env:      getEnv("ASKDESK_ENV", "development"),
-		LogLevel: getEnv("ASKDESK_LOG_LEVEL", "info"),
+		Env:         getEnv("ASKDESK_ENV", "development"),
+		LogLevel:    getEnv("ASKDESK_LOG_LEVEL", "info"),
+		DatabaseURL: getEnv("ASKDESK_DATABASE_URL", ""),
 	}
 
 	port, err := strconv.Atoi(getEnv("ASKDESK_HTTP_PORT", "8080"))
