@@ -1,5 +1,22 @@
-# Dependencies
-node_modules/
+# Binaries / build output
+bin/
+dist/
+build/
+*.exe
+*.dll
+*.so
+*.dylib
+AskDesk
+
+# Test & coverage
+*.test
+*.out
+coverage.txt
+
+# Go workspace / vendor
+go.work
+go.work.sum
+vendor/
 
 # Environment / secrets
 .env
@@ -9,14 +26,6 @@ node_modules/
 # Logs
 logs/
 *.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# Build output
-dist/
-build/
-coverage/
 
 # OS / editor
 .DS_Store
