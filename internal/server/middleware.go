@@ -16,12 +16,19 @@ func (r *statusRecorder) WriteHeader(code int) {
 	r.ResponseWriter.WriteHeader(code)
 }
 
-// logRequests emits one structured log line per request with method, path,
-// status, and latency. This is the foundation the observability stack builds on.
+// logRequests logs one line per request; extra request detail is logged at
+// debug level (visible only when run with debug logging).
 func (s *Server) logRequests(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+
+		s.log.Debug("request received",
+			"method", r.Method,
+			"path", r.URL.Path,
+			"remote", r.RemoteAddr,
+			"user_agent", r.UserAgent(),
+		)
 
 		next.ServeHTTP(rec, r)
 
@@ -34,8 +41,7 @@ func (s *Server) logRequests(next http.Handler) http.Handler {
 	})
 }
 
-// recoverPanic turns a panic in any handler into a 500 response instead of
-// crashing the process. A single bad request must never take the service down.
+// recoverPanic turns a handler panic into a 500 instead of crashing the process.
 func (s *Server) recoverPanic(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
@@ -45,7 +51,6 @@ func (s *Server) recoverPanic(next http.Handler) http.Handler {
 					"method", r.Method,
 					"path", r.URL.Path,
 				)
-				// Never leak internal details to the caller.
 				writeError(w, http.StatusInternalServerError, "internal server error")
 			}
 		}()

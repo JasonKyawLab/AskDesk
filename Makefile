@@ -1,8 +1,12 @@
-.PHONY: run build test vet tidy fmt check
+.PHONY: run debug build test vet tidy fmt check
 
-# Run the service locally.
+# Run the service (info level — debug logs hidden).
 run:
 	go run ./cmd/askdesk
+
+# Run with debug logging enabled (debug logs appear).
+debug:
+	ASKDESK_LOG_LEVEL=debug go run ./cmd/askdesk
 
 # Compile the binary to bin/askdesk.
 build:
@@ -24,5 +28,5 @@ tidy:
 fmt:
 	go fmt ./...
 
-# Pre-commit gate: format check, vet, and tests.
+# Pre-commit gate: vet and tests.
 check: vet test

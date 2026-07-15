@@ -9,7 +9,6 @@ import (
 	"testing"
 )
 
-// newTestServer builds a Server with a discarded logger for tests.
 func newTestServer() *Server {
 	return New(slog.New(slog.NewTextHandler(io.Discard, nil)))
 }

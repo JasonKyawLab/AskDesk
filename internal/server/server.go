@@ -1,8 +1,4 @@
-// Package server wires the HTTP web tier: routing and cross-cutting middleware.
-//
-// The web tier stays deliberately thin. Its job is to accept requests (webhooks,
-// widget calls, admin API) in milliseconds and hand real work to the core engine
-// and background workers. Nothing slow belongs here.
+// Package server wires the HTTP web tier: routing and middleware.
 package server
 
 import (
@@ -20,16 +16,13 @@ func New(log *slog.Logger) *Server {
 	return &Server{log: log}
 }
 
-// Routes builds the HTTP handler for the whole service, wrapped in the
-// standard middleware chain (outermost first: recovery, then logging).
+// Routes builds the service handler wrapped in the middleware chain
+// (outermost first: recover, then log).
 func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
 
-	// Liveness and readiness probes for the container orchestrator / load balancer.
 	mux.HandleFunc("GET /healthz", s.handleHealth)
 	mux.HandleFunc("GET /readyz", s.handleReady)
-
-	// Channel webhooks and the admin API attach here as they are built.
 
 	return s.recoverPanic(s.logRequests(mux))
 }
