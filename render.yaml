@@ -1,0 +1,31 @@
+# Render Blueprint — free all-in-one deployment.
+# Postgres is external (Supabase/Neon free tier with pgvector); Render's own
+# Postgres is intentionally NOT used because its free tier expires after ~30 days.
+# No Redis => the service runs in all-in-one mode (webhook runs the engine inline).
+services:
+  - type: web
+    name: askdesk
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /healthz
+    envVars:
+      - key: ASKDESK_ENV
+        value: production
+      - key: ASKDESK_LOG_LEVEL
+        value: info
+      - key: ASKDESK_BUSINESS_ID
+        value: "1"
+      # Supabase/Neon DIRECT connection string (port 5432, not the pooler).
+      - key: ASKDESK_DATABASE_URL
+        sync: false
+      - key: ASKDESK_GEMINI_API_KEY
+        sync: false
+      - key: ASKDESK_TELEGRAM_BOT_TOKEN
+        sync: false
+      # Render generates these secrets for you; read them in the dashboard.
+      - key: ASKDESK_TELEGRAM_WEBHOOK_SECRET
+        generateValue: true
+      - key: ASKDESK_MAGIC_LINK_SECRET
+        generateValue: true
+      # ASKDESK_PUBLIC_URL is not needed: the app falls back to RENDER_EXTERNAL_URL.

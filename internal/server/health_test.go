@@ -43,3 +43,18 @@ func TestHealthEndpoints(t *testing.T) {
 		})
 	}
 }
+
+func TestWakeEndpoint(t *testing.T) {
+	handler := newTestServer().Routes()
+	req := httptest.NewRequest(http.MethodGet, "/wake", nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	if !strings.Contains(rec.Body.String(), `"status":"awake"`) {
+		t.Errorf("body = %q, want it to contain awake status", rec.Body.String())
+	}
+}

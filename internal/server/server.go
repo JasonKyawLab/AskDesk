@@ -17,20 +17,25 @@ type DB interface {
 type Server struct {
 	log *slog.Logger
 	db  DB
+	mux *http.ServeMux
 }
 
-// New constructs a Server. db may be nil.
+// New constructs a Server with the base routes registered. db may be nil.
 func New(log *slog.Logger, db DB) *Server {
-	return &Server{log: log, db: db}
+	s := &Server{log: log, db: db, mux: http.NewServeMux()}
+	s.mux.HandleFunc("GET /healthz", s.handleHealth)
+	s.mux.HandleFunc("GET /readyz", s.handleReady)
+	s.mux.HandleFunc("GET /wake", s.handleWake)
+	return s
 }
 
-// Routes builds the service handler wrapped in the middleware chain
+// Mount registers an additional route (e.g. a channel webhook).
+func (s *Server) Mount(pattern string, h http.Handler) {
+	s.mux.Handle(pattern, h)
+}
+
+// Routes returns the handler wrapped in the middleware chain
 // (outermost first: recover, then log).
 func (s *Server) Routes() http.Handler {
-	mux := http.NewServeMux()
-
-	mux.HandleFunc("GET /healthz", s.handleHealth)
-	mux.HandleFunc("GET /readyz", s.handleReady)
-
-	return s.recoverPanic(s.logRequests(mux))
+	return s.recoverPanic(s.logRequests(s.mux))
 }

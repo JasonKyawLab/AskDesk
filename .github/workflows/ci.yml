@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: askdesk
+          POSTGRES_PASSWORD: askdesk
+          POSTGRES_DB: askdesk
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U askdesk"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      # Enables the store integration tests against the service Postgres.
+      ASKDESK_TEST_DATABASE_URL: postgres://askdesk:askdesk@localhost:5432/askdesk?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+      - name: Vet
+        run: go vet ./...
+      - name: Test (race)
+        run: go test -race ./...
+      - name: Build
+        run: go build ./...
+
+  govulncheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+      - name: Run govulncheck
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...

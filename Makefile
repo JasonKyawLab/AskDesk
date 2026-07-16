@@ -1,8 +1,30 @@
-.PHONY: run debug build test vet tidy fmt check db-up db-down migrate-up migrate-down migrate-create
+.PHONY: run worker debug build test vet tidy fmt check db-up db-down migrate-up migrate-down migrate-create seed set-webhook delete-webhook docker-build
 
-# Local Postgres (with pgvector) for development.
+# Seed the first business + admin. Requires ASKDESK_DATABASE_URL and psql.
+# Usage: make seed BUSINESS_NAME=minipos ADMIN_TG_ID=123456789
+seed:
+	psql "$(ASKDESK_DATABASE_URL)" -v ON_ERROR_STOP=1 \
+	  -c "INSERT INTO businesses (id, name, api_key) OVERRIDING SYSTEM VALUE VALUES (1, '$(BUSINESS_NAME)', gen_random_uuid()) ON CONFLICT (id) DO NOTHING;" \
+	  -c "INSERT INTO admins (business_id, channel, external_id, name) VALUES (1, 'telegram', '$(ADMIN_TG_ID)', 'owner') ON CONFLICT DO NOTHING;"
+
+# Point Telegram at your webhook. Requires ASKDESK_TELEGRAM_BOT_TOKEN,
+# ASKDESK_PUBLIC_URL, ASKDESK_TELEGRAM_WEBHOOK_SECRET.
+set-webhook:
+	curl -fsS "https://api.telegram.org/bot$(ASKDESK_TELEGRAM_BOT_TOKEN)/setWebhook" \
+	  --data-urlencode "url=$(ASKDESK_PUBLIC_URL)/webhook/telegram" \
+	  --data-urlencode "secret_token=$(ASKDESK_TELEGRAM_WEBHOOK_SECRET)"; echo
+
+delete-webhook:
+	curl -fsS "https://api.telegram.org/bot$(ASKDESK_TELEGRAM_BOT_TOKEN)/deleteWebhook"; echo
+
+# Build the container image locally.
+docker-build:
+	docker build -t askdesk:local .
+
+
+# Local Postgres (pgvector) and Redis for development.
 db-up:
-	docker compose up -d postgres
+	docker compose up -d postgres redis
 
 db-down:
 	docker compose down
@@ -20,17 +42,22 @@ migrate-create:
 	migrate create -ext sql -dir internal/store/migrations -seq $(name)
 
 
-# Run the service (info level — debug logs hidden).
+# Run the web tier (info level — debug logs hidden).
 run:
 	go run ./cmd/askdesk
 
-# Run with debug logging enabled (debug logs appear).
+# Run the worker tier.
+worker:
+	go run ./cmd/worker
+
+# Run the web tier with debug logging enabled (debug logs appear).
 debug:
 	ASKDESK_LOG_LEVEL=debug go run ./cmd/askdesk
 
-# Compile the binary to bin/askdesk.
+# Compile both binaries to bin/.
 build:
 	go build -o bin/askdesk ./cmd/askdesk
+	go build -o bin/worker ./cmd/worker
 
 # Run all tests.
 test:

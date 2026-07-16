@@ -6,7 +6,9 @@ build/
 *.dll
 *.so
 *.dylib
-AskDesk
+# Root-level compiled binaries (anchored with / so they don't match cmd/askdesk).
+/askdesk
+/worker
 
 # Test & coverage
 *.test
@@ -33,3 +35,7 @@ Thumbs.db
 .idea/
 .vscode/
 *.swp
+
+# Personal notes (not part of the project)
+HOW_IT_WORKS.txt
+SETUP.txt
