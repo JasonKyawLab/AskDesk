@@ -26,7 +26,7 @@ jobs:
       # Enables the store integration tests against the service Postgres.
       ASKDESK_TEST_DATABASE_URL: postgres://askdesk:askdesk@localhost:5432/askdesk?sslmode=disable
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-go@v5
         with:
           go-version: "1.25"
@@ -40,7 +40,7 @@ jobs:
   govulncheck:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-go@v5
         with:
           go-version: "1.25"
