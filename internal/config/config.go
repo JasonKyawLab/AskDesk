@@ -19,6 +19,8 @@ type Config struct {
 	// Phase 1 single-tenant + channel settings.
 	BusinessID            int64  // the business this instance serves
 	GeminiAPIKey          string // empty falls back to a static dev provider
+	GeminiGenModel        string // generation model name (override if deprecated)
+	GeminiEmbedModel      string // embedding model name (override if deprecated)
 	TelegramBotToken      string // empty disables the Telegram webhook
 	TelegramWebhookSecret string // verified on every Telegram webhook request
 	TelegramAPIURL        string // override Bot API base URL (empty = Telegram's)
@@ -37,6 +39,8 @@ func Load() (*Config, error) {
 		DatabaseURL:           getEnv("ASKDESK_DATABASE_URL", ""),
 		RedisURL:              getEnv("ASKDESK_REDIS_URL", ""),
 		GeminiAPIKey:          getEnv("ASKDESK_GEMINI_API_KEY", ""),
+		GeminiGenModel:        getEnv("ASKDESK_GEMINI_GEN_MODEL", ""),
+		GeminiEmbedModel:      getEnv("ASKDESK_GEMINI_EMBED_MODEL", ""),
 		TelegramBotToken:      getEnv("ASKDESK_TELEGRAM_BOT_TOKEN", ""),
 		TelegramWebhookSecret: getEnv("ASKDESK_TELEGRAM_WEBHOOK_SECRET", ""),
 		TelegramAPIURL:        getEnv("ASKDESK_TELEGRAM_API_URL", ""),

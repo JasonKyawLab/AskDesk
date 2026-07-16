@@ -15,7 +15,7 @@ import (
 // to a static provider and a dev embedder so the bot still runs end-to-end.
 func BuildAI(cfg *config.Config, log *slog.Logger) (core.AIProvider, store.Embedder) {
 	if cfg.GeminiAPIKey != "" {
-		g := ai.NewGemini(cfg.GeminiAPIKey)
+		g := ai.NewGemini(cfg.GeminiAPIKey, ai.WithModels(cfg.GeminiGenModel, cfg.GeminiEmbedModel))
 		log.Info("AI: gemini provider enabled")
 		return ai.NewChain(log, g), g
 	}

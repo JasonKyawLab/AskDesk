@@ -20,6 +20,7 @@ type Gemini struct {
 	apiKey     string
 	genModel   string
 	embedModel string
+	embedDim   int // output dimensions requested; must match the faqs.embedding column
 	baseURL    string
 	httpClient *http.Client
 }
@@ -33,13 +34,27 @@ func WithBaseURL(u string) GeminiOption { return func(g *Gemini) { g.baseURL = u
 // WithHTTPClient overrides the HTTP client (used in tests).
 func WithHTTPClient(c *http.Client) GeminiOption { return func(g *Gemini) { g.httpClient = c } }
 
-// NewGemini builds a Gemini client. genModel/embedModel default to the free-tier
-// flash and 768-dim embedding models (matching the faqs.embedding column).
+// WithModels overrides the generation and embedding model names. Empty values
+// keep the defaults. Model names change over time, so these are configurable.
+func WithModels(gen, embed string) GeminiOption {
+	return func(g *Gemini) {
+		if gen != "" {
+			g.genModel = gen
+		}
+		if embed != "" {
+			g.embedModel = embed
+		}
+	}
+}
+
+// NewGemini builds a Gemini client with current default models. Embeddings are
+// requested at 768 dimensions to match the faqs.embedding column.
 func NewGemini(apiKey string, opts ...GeminiOption) *Gemini {
 	g := &Gemini{
 		apiKey:     apiKey,
-		genModel:   "gemini-1.5-flash",
-		embedModel: "text-embedding-004",
+		genModel:   "gemini-2.5-flash",
+		embedModel: "gemini-embedding-001",
+		embedDim:   768,
 		baseURL:    "https://generativelanguage.googleapis.com/v1beta",
 		httpClient: &http.Client{Timeout: 30 * time.Second},
 	}
@@ -76,8 +91,9 @@ func (g *Gemini) GenerateReply(ctx context.Context, question string, faqs []core
 // Embed returns the embedding vector for text (fixed provider for the index).
 func (g *Gemini) Embed(ctx context.Context, text string) ([]float32, error) {
 	reqBody := embedRequest{
-		Model:   "models/" + g.embedModel,
-		Content: geminiContent{Parts: []geminiPart{{Text: text}}},
+		Model:                "models/" + g.embedModel,
+		Content:              geminiContent{Parts: []geminiPart{{Text: text}}},
+		OutputDimensionality: g.embedDim,
 	}
 
 	var resp embedResponse
@@ -170,8 +186,9 @@ type genResponse struct {
 }
 
 type embedRequest struct {
-	Model   string        `json:"model"`
-	Content geminiContent `json:"content"`
+	Model                string        `json:"model"`
+	Content              geminiContent `json:"content"`
+	OutputDimensionality int           `json:"outputDimensionality,omitempty"`
 }
 
 type embedResponse struct {
