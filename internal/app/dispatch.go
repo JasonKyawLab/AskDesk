@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/JasonKyawLab/AskDesk/internal/core"
 )
@@ -66,7 +67,18 @@ func NewSyncSubmitter(d *Dispatcher) *SyncSubmitter {
 	return &SyncSubmitter{dispatcher: d}
 }
 
-// Submit dispatches the message synchronously.
-func (s *SyncSubmitter) Submit(ctx context.Context, msg core.Message, replyTo string) error {
-	return s.dispatcher.Dispatch(ctx, msg, replyTo)
+// Submit dispatches the message in the background and returns immediately, so
+// the webhook can ack fast (slow AI calls don't hold the request open). The
+// reply is delivered via the channel API when the engine finishes. It uses a
+// detached context because the request's context is cancelled once the handler
+// returns.
+func (s *SyncSubmitter) Submit(_ context.Context, msg core.Message, replyTo string) error {
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+		defer cancel()
+		if err := s.dispatcher.Dispatch(ctx, msg, replyTo); err != nil {
+			s.dispatcher.log.Error("async dispatch failed", "error", err, "business_id", msg.BusinessID)
+		}
+	}()
+	return nil
 }

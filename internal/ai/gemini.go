@@ -56,7 +56,7 @@ func NewGemini(apiKey string, opts ...GeminiOption) *Gemini {
 		embedModel: "gemini-embedding-001",
 		embedDim:   768,
 		baseURL:    "https://generativelanguage.googleapis.com/v1beta",
-		httpClient: &http.Client{Timeout: 30 * time.Second},
+		httpClient: &http.Client{Timeout: 60 * time.Second},
 	}
 	for _, o := range opts {
 		o(g)
@@ -77,7 +77,7 @@ func (g *Gemini) GenerateReply(ctx context.Context, question string, faqs []core
 	}
 
 	var resp genResponse
-	url := fmt.Sprintf("%s/models/%s:generateContent?key=%s", g.baseURL, g.genModel, g.apiKey)
+	url := fmt.Sprintf("%s/models/%s:generateContent", g.baseURL, g.genModel)
 	if err := g.post(ctx, url, reqBody, &resp); err != nil {
 		return "", err
 	}
@@ -97,7 +97,7 @@ func (g *Gemini) Embed(ctx context.Context, text string) ([]float32, error) {
 	}
 
 	var resp embedResponse
-	url := fmt.Sprintf("%s/models/%s:embedContent?key=%s", g.baseURL, g.embedModel, g.apiKey)
+	url := fmt.Sprintf("%s/models/%s:embedContent", g.baseURL, g.embedModel)
 	if err := g.post(ctx, url, reqBody, &resp); err != nil {
 		return nil, err
 	}
@@ -121,6 +121,8 @@ func (g *Gemini) post(ctx context.Context, url string, body, out any) error {
 		return fmt.Errorf("gemini: build request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	// Send the key as a header, never in the URL, so it can't leak into logs.
+	req.Header.Set("x-goog-api-key", g.apiKey)
 
 	resp, err := g.httpClient.Do(req)
 	if err != nil {
