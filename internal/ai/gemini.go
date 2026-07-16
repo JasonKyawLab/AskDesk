@@ -52,7 +52,7 @@ func WithModels(gen, embed string) GeminiOption {
 func NewGemini(apiKey string, opts ...GeminiOption) *Gemini {
 	g := &Gemini{
 		apiKey:     apiKey,
-		genModel:   "gemini-2.5-flash",
+		genModel:   "gemini-3.5-flash",
 		embedModel: "gemini-embedding-001",
 		embedDim:   768,
 		baseURL:    "https://generativelanguage.googleapis.com/v1beta",
