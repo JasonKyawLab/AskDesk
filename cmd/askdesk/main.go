@@ -51,9 +51,10 @@ func run() error {
 	log.Info("starting AskDesk", "env", cfg.Env, "port", cfg.HTTPPort)
 
 	// All-in-one mode: no Redis, so the webhook runs the engine inline.
-	// The editor always needs the database too.
+	// The editor and the button menu need the database too.
 	syncMode := cfg.TelegramBotToken != "" && cfg.RedisURL == ""
-	needDB := syncMode || cfg.MagicLinkSecret != ""
+	needDB := syncMode || cfg.MagicLinkSecret != "" ||
+		(cfg.TelegramBotToken != "" && cfg.DatabaseURL != "")
 
 	var (
 		pool        *pgxpool.Pool
@@ -86,8 +87,24 @@ func run() error {
 		if cleanup != nil {
 			defer cleanup()
 		}
+
+		// Button menu (data-driven from FAQ categories) needs the database.
+		var (
+			menuStore  telegram.MenuStore
+			menuClient telegram.MenuClient
+		)
+		if pool != nil {
+			var clientOpts []telegram.ClientOption
+			if cfg.TelegramAPIURL != "" {
+				clientOpts = append(clientOpts, telegram.WithBaseURL(cfg.TelegramAPIURL))
+			}
+			menuStore = store.NewFAQs(pool, embedder)
+			menuClient = telegram.NewClient(cfg.TelegramBotToken, clientOpts...)
+			log.Info("telegram button menu enabled")
+		}
+
 		srv.Mount("POST /webhook/telegram",
-			telegram.NewHandler(submitter, cfg.BusinessID, cfg.TelegramWebhookSecret, log))
+			telegram.NewHandler(submitter, menuStore, menuClient, cfg.BusinessID, cfg.TelegramWebhookSecret, log))
 		log.Info("telegram webhook enabled", "business_id", cfg.BusinessID, "mode", modeName(syncMode))
 		if cfg.TelegramWebhookSecret == "" {
 			log.Warn("telegram webhook secret is empty; requests are not verified")

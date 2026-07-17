@@ -20,17 +20,45 @@ type Submitter interface {
 
 // Handler is the Telegram webhook endpoint. In Phase 1 it serves a single
 // business; multi-tenant routing (by bot token) plugs in here later.
+//
+// Button-menu taps and greetings are handled here directly (fast DB reads, no
+// AI); free-typed questions flow through the Submitter to the engine.
 type Handler struct {
 	submitter  Submitter
+	menu       MenuStore  // nil disables the button menu
+	menuClient MenuClient // nil disables the button menu
 	businessID int64
 	secret     string
 	log        *slog.Logger
 }
 
 // NewHandler builds the webhook handler. secret is the Telegram webhook secret
-// token; an empty secret disables verification (development only).
-func NewHandler(submitter Submitter, businessID int64, secret string, log *slog.Logger) *Handler {
-	return &Handler{submitter: submitter, businessID: businessID, secret: secret, log: log}
+// token; an empty secret disables verification (development only). menu and
+// menuClient may be nil, which disables the button menu.
+func NewHandler(submitter Submitter, menu MenuStore, menuClient MenuClient, businessID int64, secret string, log *slog.Logger) *Handler {
+	return &Handler{
+		submitter:  submitter,
+		menu:       menu,
+		menuClient: menuClient,
+		businessID: businessID,
+		secret:     secret,
+		log:        log,
+	}
+}
+
+// callbackQuery is a button tap on an inline keyboard.
+type callbackQuery struct {
+	ID   string `json:"id"`
+	Data string `json:"data"`
+	From struct {
+		ID int64 `json:"id"`
+	} `json:"from"`
+	Message *struct {
+		MessageID int64 `json:"message_id"`
+		Chat      struct {
+			ID int64 `json:"id"`
+		} `json:"chat"`
+	} `json:"message"`
 }
 
 // update is the subset of a Telegram update we care about.
@@ -46,10 +74,12 @@ type update struct {
 			Username  string `json:"username"`
 		} `json:"from"`
 	} `json:"message"`
+	CallbackQuery *callbackQuery `json:"callback_query"`
 }
 
-// ServeHTTP verifies the secret, normalizes the update, and submits it. It acks
-// 200 after auth so Telegram does not retry-storm on a transient error.
+// ServeHTTP verifies the secret, then routes: button taps and greetings to the
+// menu, text to the submitter. It acks 200 after auth so Telegram does not
+// retry-storm on a transient error.
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if !h.validSecret(r) {
 		h.log.Warn("telegram webhook: invalid secret token")
@@ -64,8 +94,24 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Button tap: handled inline (DB reads only, no AI).
+	if upd.CallbackQuery != nil {
+		if h.menusEnabled() {
+			h.handleCallback(r.Context(), upd.CallbackQuery)
+		}
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
 	// Ignore non-text updates (joins, stickers, edits, ...).
 	if upd.Message == nil || upd.Message.Text == "" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	// Greetings open the menu instead of spending an AI call.
+	if h.menusEnabled() && isGreeting(upd.Message.Text) {
+		h.showMainMenu(r.Context(), upd.Message.Chat.ID)
 		w.WriteHeader(http.StatusOK)
 		return
 	}

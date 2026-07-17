@@ -118,6 +118,72 @@ func (f *FAQs) List(ctx context.Context, businessID int64) ([]FAQ, error) {
 	return out, rows.Err()
 }
 
+// Categories returns a business's FAQ categories in insertion order (the order
+// the knowledge base was authored in), for building menus.
+func (f *FAQs) Categories(ctx context.Context, businessID int64) ([]string, error) {
+	const q = `
+		SELECT category
+		FROM faqs
+		WHERE business_id = $1 AND category IS NOT NULL AND category <> ''
+		GROUP BY category
+		ORDER BY min(id)`
+
+	rows, err := f.pool.Query(ctx, q, businessID)
+	if err != nil {
+		return nil, fmt.Errorf("list categories: %w", err)
+	}
+	defer rows.Close()
+
+	var out []string
+	for rows.Next() {
+		var c string
+		if err := rows.Scan(&c); err != nil {
+			return nil, fmt.Errorf("scan category: %w", err)
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+// ListByCategory returns a business's FAQs in one category, oldest first.
+func (f *FAQs) ListByCategory(ctx context.Context, businessID int64, category string) ([]FAQ, error) {
+	const q = `
+		SELECT id, question, answer, coalesce(category, '')
+		FROM faqs
+		WHERE business_id = $1 AND category = $2
+		ORDER BY id`
+
+	rows, err := f.pool.Query(ctx, q, businessID, category)
+	if err != nil {
+		return nil, fmt.Errorf("list by category: %w", err)
+	}
+	defer rows.Close()
+
+	var out []FAQ
+	for rows.Next() {
+		var it FAQ
+		if err := rows.Scan(&it.ID, &it.Question, &it.Answer, &it.Category); err != nil {
+			return nil, fmt.Errorf("scan faq: %w", err)
+		}
+		out = append(out, it)
+	}
+	return out, rows.Err()
+}
+
+// GetByID returns one FAQ, scoped to the business (tenant isolation).
+func (f *FAQs) GetByID(ctx context.Context, businessID, id int64) (FAQ, error) {
+	const q = `
+		SELECT id, question, answer, coalesce(category, '')
+		FROM faqs
+		WHERE business_id = $1 AND id = $2`
+
+	var it FAQ
+	if err := f.pool.QueryRow(ctx, q, businessID, id).Scan(&it.ID, &it.Question, &it.Answer, &it.Category); err != nil {
+		return FAQ{}, fmt.Errorf("get faq: %w", err)
+	}
+	return it, nil
+}
+
 // Delete removes a FAQ. The business_id filter enforces tenant isolation: a
 // business can only delete its own FAQs.
 func (f *FAQs) Delete(ctx context.Context, businessID, id int64) error {

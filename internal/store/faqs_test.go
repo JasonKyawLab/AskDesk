@@ -81,4 +81,30 @@ func TestFAQs_SearchRanksBySimilarityAndIsolatesTenants(t *testing.T) {
 			t.Fatalf("tenant isolation breach: business B's FAQ leaked into A's results")
 		}
 	}
+
+	// Menu queries: categories in insertion order, list, and scoped get.
+	cats, err := faqs.Categories(ctx, bizA)
+	if err != nil {
+		t.Fatalf("Categories: %v", err)
+	}
+	if len(cats) != 2 || cats[0] != "shipping" || cats[1] != "billing" {
+		t.Errorf("categories = %v, want [shipping billing] in insertion order", cats)
+	}
+
+	list, err := faqs.ListByCategory(ctx, bizA, "shipping")
+	if err != nil {
+		t.Fatalf("ListByCategory: %v", err)
+	}
+	if len(list) != 1 || list[0].Answer != "1-2 days" {
+		t.Errorf("list = %+v", list)
+	}
+
+	got, err := faqs.GetByID(ctx, bizA, list[0].ID)
+	if err != nil || got.Question != "what are your delivery times" {
+		t.Errorf("GetByID = %+v, err=%v", got, err)
+	}
+	// Scoped get: business B cannot fetch A's FAQ.
+	if _, err := faqs.GetByID(ctx, bizB, list[0].ID); err == nil {
+		t.Error("expected error fetching another business's FAQ")
+	}
 }
