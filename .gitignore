@@ -39,3 +39,6 @@ Thumbs.db
 # Personal notes (not part of the project)
 HOW_IT_WORKS.txt
 SETUP.txt
+
+# Tenant FAQ data (not part of the reusable product)
+minipos_faqs.json

@@ -1,4 +1,4 @@
-.PHONY: run worker debug build test vet tidy fmt check db-up db-down migrate-up migrate-down migrate-create seed set-webhook delete-webhook docker-build
+.PHONY: run worker debug build test vet tidy fmt check db-up db-down migrate-up migrate-down migrate-create seed set-webhook delete-webhook docker-build load-faqs
 
 # Seed the first business + admin. Requires ASKDESK_DATABASE_URL and psql.
 # Usage: make seed BUSINESS_NAME=minipos ADMIN_TG_ID=123456789
@@ -16,6 +16,11 @@ set-webhook:
 
 delete-webhook:
 	curl -fsS "https://api.telegram.org/bot$(ASKDESK_TELEGRAM_BOT_TOKEN)/deleteWebhook"; echo
+
+# Bulk-load FAQs from a JSON file. Usage: make load-faqs file=minipos_faqs.json
+# Requires ASKDESK_DATABASE_URL, ASKDESK_GEMINI_API_KEY, ASKDESK_BUSINESS_ID.
+load-faqs:
+	go run ./cmd/loadfaqs -file $(file) $(if $(reset),-reset,)
 
 # Build the container image locally.
 docker-build:

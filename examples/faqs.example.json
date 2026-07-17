@@ -1,0 +1,12 @@
+[
+  {
+    "category": "Getting Started",
+    "question": "What is MiniPOS?",
+    "answer": "MiniPOS is a web-based point-of-sale platform for restaurants, retail shops, and online stores."
+  },
+  {
+    "category": "Pricing",
+    "question": "How much does it cost?",
+    "answer": "MiniPOS is free during early access. A free tier will always remain when paid plans launch."
+  }
+]
