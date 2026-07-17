@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/JasonKyawLab/AskDesk/internal/core"
 )
@@ -25,21 +26,23 @@ type Submitter interface {
 // AI); free-typed questions flow through the Submitter to the engine.
 type Handler struct {
 	submitter  Submitter
-	menu       MenuStore  // nil disables the button menu
-	menuClient MenuClient // nil disables the button menu
+	menu       MenuStore   // nil disables the button menu
+	menuClient MenuClient  // nil disables the button menu
+	panel      *AdminPanel // nil disables the admin panel
 	businessID int64
 	secret     string
 	log        *slog.Logger
 }
 
 // NewHandler builds the webhook handler. secret is the Telegram webhook secret
-// token; an empty secret disables verification (development only). menu and
-// menuClient may be nil, which disables the button menu.
-func NewHandler(submitter Submitter, menu MenuStore, menuClient MenuClient, businessID int64, secret string, log *slog.Logger) *Handler {
+// token; an empty secret disables verification (development only). menu,
+// menuClient, and panel may be nil, which disables those features.
+func NewHandler(submitter Submitter, menu MenuStore, menuClient MenuClient, panel *AdminPanel, businessID int64, secret string, log *slog.Logger) *Handler {
 	return &Handler{
 		submitter:  submitter,
 		menu:       menu,
 		menuClient: menuClient,
+		panel:      panel,
 		businessID: businessID,
 		secret:     secret,
 		log:        log,
@@ -94,9 +97,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Button tap: handled inline (DB reads only, no AI).
+	// Button tap: handled inline (DB reads only, no AI). Admin-panel data is
+	// routed first; everything else is the customer menu.
 	if upd.CallbackQuery != nil {
-		if h.menusEnabled() {
+		handled := h.panel != nil && h.panel.HandleCallback(r.Context(), upd.CallbackQuery)
+		if !handled && h.menusEnabled() {
 			h.handleCallback(r.Context(), upd.CallbackQuery)
 		}
 		w.WriteHeader(http.StatusOK)
@@ -108,9 +113,26 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
+	text := upd.Message.Text
+
+	// An admin mid tap-to-reply: their plain message goes to the customer.
+	if h.panel != nil && !strings.HasPrefix(strings.TrimSpace(text), "/") {
+		if h.panel.InterceptReply(r.Context(), upd.Message.From.ID, upd.Message.Chat.ID, text) {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+	}
+
+	// /admin opens the button panel (admins only; others fall through).
+	if h.panel != nil && strings.TrimSpace(strings.ToLower(text)) == "/admin" {
+		if h.panel.ShowPanel(r.Context(), upd.Message.From.ID, upd.Message.Chat.ID) {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+	}
 
 	// Greetings open the menu instead of spending an AI call.
-	if h.menusEnabled() && isGreeting(upd.Message.Text) {
+	if h.menusEnabled() && isGreeting(text) {
 		h.showMainMenu(r.Context(), upd.Message.Chat.ID)
 		w.WriteHeader(http.StatusOK)
 		return

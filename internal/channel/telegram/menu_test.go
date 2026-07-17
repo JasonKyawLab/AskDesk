@@ -50,7 +50,7 @@ func (f *fakeMenuClient) AnswerCallback(context.Context, string) error {
 }
 
 func menuHandler(sub *fakeSubmitter, client *fakeMenuClient) *Handler {
-	return NewHandler(sub, fakeMenuStore{}, client, 1, "", discardLogger())
+	return NewHandler(sub, fakeMenuStore{}, client, nil, 1, "", discardLogger())
 }
 
 func post(h *Handler, body string) *httptest.ResponseRecorder {
@@ -134,7 +134,7 @@ func TestMenu_FreeTextStillGoesToSubmitter(t *testing.T) {
 
 func TestMenu_DisabledFallsBackToSubmitter(t *testing.T) {
 	sub := &fakeSubmitter{}
-	h := NewHandler(sub, nil, nil, 1, "", discardLogger())
+	h := NewHandler(sub, nil, nil, nil, 1, "", discardLogger())
 
 	post(h, `{"message":{"text":"hi","chat":{"id":5},"from":{"id":9}}}`)
 

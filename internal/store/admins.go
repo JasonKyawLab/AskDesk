@@ -2,8 +2,10 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/JasonKyawLab/AskDesk/internal/core"
@@ -95,6 +97,7 @@ func (a *Admins) PendingUnanswered(ctx context.Context, businessID int64, limit 
 type UnansweredTarget struct {
 	Channel  core.Channel
 	ReplyTo  string // channel reply address (e.g. Telegram chat id)
+	UserName string // customer display name, may be empty
 	Question string
 }
 
@@ -102,18 +105,58 @@ type UnansweredTarget struct {
 // business so an admin can only reply within their own tenant.
 func (a *Admins) GetUnanswered(ctx context.Context, businessID, id int64) (UnansweredTarget, error) {
 	const q = `
-		SELECT c.channel, c.external_user_id, u.question
+		SELECT c.channel, c.external_user_id, coalesce(c.external_user_name, ''), u.question
 		FROM unanswered_queue u
 		JOIN conversations c ON c.id = u.conversation_id
 		WHERE u.id = $1 AND c.business_id = $2 AND u.status = 'pending'`
 
 	var t UnansweredTarget
 	var channel string
-	if err := a.pool.QueryRow(ctx, q, id, businessID).Scan(&channel, &t.ReplyTo, &t.Question); err != nil {
+	if err := a.pool.QueryRow(ctx, q, id, businessID).Scan(&channel, &t.ReplyTo, &t.UserName, &t.Question); err != nil {
 		return UnansweredTarget{}, fmt.Errorf("get unanswered: %w", err)
 	}
 	t.Channel = core.Channel(channel)
 	return t, nil
+}
+
+// SetPendingReply records which queue item the admin is about to answer
+// (tap-to-reply: their next plain message becomes the reply).
+func (a *Admins) SetPendingReply(ctx context.Context, businessID int64, channel core.Channel, externalID string, queueID int64) error {
+	const q = `UPDATE admins SET pending_reply_id = $4
+		WHERE business_id = $1 AND channel = $2 AND external_id = $3`
+	if _, err := a.pool.Exec(ctx, q, businessID, string(channel), externalID, queueID); err != nil {
+		return fmt.Errorf("set pending reply: %w", err)
+	}
+	return nil
+}
+
+// ClearPendingReply cancels the admin's reply-in-progress.
+func (a *Admins) ClearPendingReply(ctx context.Context, businessID int64, channel core.Channel, externalID string) error {
+	const q = `UPDATE admins SET pending_reply_id = NULL
+		WHERE business_id = $1 AND channel = $2 AND external_id = $3`
+	if _, err := a.pool.Exec(ctx, q, businessID, string(channel), externalID); err != nil {
+		return fmt.Errorf("clear pending reply: %w", err)
+	}
+	return nil
+}
+
+// PendingReply returns the queue item the admin is replying to, if any.
+func (a *Admins) PendingReply(ctx context.Context, businessID int64, channel core.Channel, externalID string) (int64, bool, error) {
+	const q = `SELECT pending_reply_id FROM admins
+		WHERE business_id = $1 AND channel = $2 AND external_id = $3`
+
+	var id *int64
+	err := a.pool.QueryRow(ctx, q, businessID, string(channel), externalID).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, false, fmt.Errorf("pending reply: %w", err)
+	}
+	if id == nil {
+		return 0, false, nil
+	}
+	return *id, true, nil
 }
 
 // ResolveUnanswered marks a pending item resolved, scoped to the business.

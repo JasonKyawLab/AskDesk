@@ -75,7 +75,7 @@ func (s *Service) HandleCommand(ctx context.Context, businessID int64, channel c
 	case "/edit":
 		return s.editLink(businessID, channel, userID)
 	default:
-		return "Commands: /stats, /unanswered, /reply <id> <message>, /edit", true, nil
+		return "Commands: /admin (button panel), /stats, /unanswered, /reply <id> <message>, /edit", true, nil
 	}
 }
 

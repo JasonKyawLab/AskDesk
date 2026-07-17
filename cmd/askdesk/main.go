@@ -88,23 +88,31 @@ func run() error {
 			defer cleanup()
 		}
 
-		// Button menu (data-driven from FAQ categories) needs the database.
+		// Button menu + admin panel (data-driven) need the database.
 		var (
 			menuStore  telegram.MenuStore
 			menuClient telegram.MenuClient
+			panel      *telegram.AdminPanel
 		)
 		if pool != nil {
 			var clientOpts []telegram.ClientOption
 			if cfg.TelegramAPIURL != "" {
 				clientOpts = append(clientOpts, telegram.WithBaseURL(cfg.TelegramAPIURL))
 			}
+			client := telegram.NewClient(cfg.TelegramBotToken, clientOpts...)
 			menuStore = store.NewFAQs(pool, embedder)
-			menuClient = telegram.NewClient(cfg.TelegramBotToken, clientOpts...)
-			log.Info("telegram button menu enabled")
+			menuClient = client
+
+			var signer *auth.Signer
+			if cfg.MagicLinkSecret != "" {
+				signer = auth.NewSigner(cfg.MagicLinkSecret)
+			}
+			panel = telegram.NewAdminPanel(store.NewAdmins(pool), client, signer, cfg.PublicURL, cfg.BusinessID, log)
+			log.Info("telegram button menu + admin panel enabled")
 		}
 
 		srv.Mount("POST /webhook/telegram",
-			telegram.NewHandler(submitter, menuStore, menuClient, cfg.BusinessID, cfg.TelegramWebhookSecret, log))
+			telegram.NewHandler(submitter, menuStore, menuClient, panel, cfg.BusinessID, cfg.TelegramWebhookSecret, log))
 		log.Info("telegram webhook enabled", "business_id", cfg.BusinessID, "mode", modeName(syncMode))
 		if cfg.TelegramWebhookSecret == "" {
 			log.Warn("telegram webhook secret is empty; requests are not verified")
