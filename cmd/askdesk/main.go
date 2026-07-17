@@ -32,6 +32,7 @@ import (
 	"github.com/JasonKyawLab/AskDesk/internal/queue"
 	"github.com/JasonKyawLab/AskDesk/internal/server"
 	"github.com/JasonKyawLab/AskDesk/internal/store"
+	"github.com/JasonKyawLab/AskDesk/internal/webapi"
 )
 
 func main() {
@@ -50,21 +51,8 @@ func run() error {
 	log := logging.New(cfg.IsProduction(), cfg.LogLevel)
 	log.Info("starting AskDesk", "env", cfg.Env, "port", cfg.HTTPPort)
 
-	// All-in-one mode: no Redis, so the webhook runs the engine inline.
-	// The editor and the button menu need the database too.
-	syncMode := cfg.TelegramBotToken != "" && cfg.RedisURL == ""
-	needDB := syncMode || cfg.MagicLinkSecret != "" ||
-		(cfg.TelegramBotToken != "" && cfg.DatabaseURL != "")
-
-	var (
-		pool        *pgxpool.Pool
-		genProvider core.AIProvider
-		embedder    store.Embedder
-	)
-	if needDB {
-		if cfg.DatabaseURL == "" {
-			return errors.New("this configuration requires ASKDESK_DATABASE_URL")
-		}
+	var pool *pgxpool.Pool
+	if cfg.DatabaseURL != "" {
 		pool, err = store.NewPool(context.Background(), cfg.DatabaseURL)
 		if err != nil {
 			return fmt.Errorf("connect database: %w", err)
@@ -73,107 +61,85 @@ func run() error {
 		if err := store.Migrate(cfg.DatabaseURL); err != nil {
 			return fmt.Errorf("migrate database: %w", err)
 		}
-		genProvider, embedder = app.BuildAI(cfg, log)
 	}
 
 	srv := server.New(log, pool)
 
-	// Telegram webhook.
-	if cfg.TelegramBotToken != "" {
-		submitter, cleanup, err := buildSubmitter(cfg, log, pool, genProvider, embedder, syncMode)
-		if err != nil {
-			return err
-		}
-		if cleanup != nil {
-			defer cleanup()
+	if pool != nil {
+		// Shared components — one engine, reused by every channel.
+		genProvider, embedder := app.BuildAI(cfg, log)
+		faqStore := store.NewFAQs(pool, embedder)
+		bizStore := store.NewBusinesses(pool)
+		adminStore := store.NewAdmins(pool)
+		engine := core.NewEngine(faqStore, genProvider, store.NewConversations(pool), bizStore, log)
+		deliverer := app.NewChannelDeliverer(cfg)
+
+		var signer *auth.Signer
+		if cfg.MagicLinkSecret != "" {
+			signer = auth.NewSigner(cfg.MagicLinkSecret)
 		}
 
-		// Button menu + admin panel + settings (data-driven) need the database.
-		var (
-			menuStore  telegram.MenuStore
-			menuClient telegram.MenuClient
-			panel      *telegram.AdminPanel
-			settings   telegram.SettingsStore
-		)
-		if pool != nil {
+		// Web API (JSON channel) — available whenever the database is present.
+		srv.Mount("/api/v1/", webapi.New(engine, faqStore, bizStore, cfg.CORSOrigins, log))
+		log.Info("web api enabled")
+
+		// Telegram channel.
+		if cfg.TelegramBotToken != "" {
 			var clientOpts []telegram.ClientOption
 			if cfg.TelegramAPIURL != "" {
 				clientOpts = append(clientOpts, telegram.WithBaseURL(cfg.TelegramAPIURL))
 			}
 			client := telegram.NewClient(cfg.TelegramBotToken, clientOpts...)
-			menuStore = store.NewFAQs(pool, embedder)
-			menuClient = client
-			settings = store.NewBusinesses(pool)
+			panel := telegram.NewAdminPanel(adminStore, client, signer, cfg.PublicURL, cfg.BusinessID, log)
 
-			var signer *auth.Signer
-			if cfg.MagicLinkSecret != "" {
-				signer = auth.NewSigner(cfg.MagicLinkSecret)
+			// Submitter: run inline (all-in-one) or enqueue to the worker (queue mode).
+			var submitter telegram.Submitter
+			if cfg.RedisURL == "" {
+				adminSvc := admin.NewService(adminStore, deliverer, signer, cfg.PublicURL)
+				dispatcher := app.NewDispatcher(engine, adminSvc, deliverer, log)
+				submitter = app.NewSyncSubmitter(dispatcher)
+				log.Info("telegram: all-in-one mode")
+			} else {
+				enq, err := queue.NewEnqueuer(cfg.RedisURL)
+				if err != nil {
+					return fmt.Errorf("connect redis: %w", err)
+				}
+				defer enq.Close()
+				submitter = enq
+				log.Info("telegram: queue mode")
 			}
-			panel = telegram.NewAdminPanel(store.NewAdmins(pool), client, signer, cfg.PublicURL, cfg.BusinessID, log)
-			log.Info("telegram button menu + admin panel enabled")
+
+			srv.Mount("POST /webhook/telegram",
+				telegram.NewHandler(submitter, faqStore, client, panel, bizStore, cfg.BusinessID, cfg.TelegramWebhookSecret, log))
+			log.Info("telegram webhook enabled", "business_id", cfg.BusinessID)
+			if cfg.TelegramWebhookSecret == "" {
+				log.Warn("telegram webhook secret is empty; requests are not verified")
+			}
 		}
 
+		// Magic-link FAQ + settings editor.
+		if cfg.MagicLinkSecret != "" {
+			ed := editor.NewHandler(faqStore, bizStore, signer,
+				cfg.IsProduction() || strings.HasPrefix(cfg.PublicURL, "https"), log)
+			srv.Mount("GET /edit", http.HandlerFunc(ed.HandleEdit))
+			srv.Mount("POST /edit/faqs", http.HandlerFunc(ed.HandleCreate))
+			srv.Mount("POST /edit/faqs/delete", http.HandlerFunc(ed.HandleDelete))
+			srv.Mount("POST /edit/settings", http.HandlerFunc(ed.HandleSettings))
+			log.Info("faq editor enabled")
+		}
+	} else if cfg.TelegramBotToken != "" && cfg.RedisURL != "" {
+		// Thin web tier without a database: enqueue only; the worker runs the engine.
+		enq, err := queue.NewEnqueuer(cfg.RedisURL)
+		if err != nil {
+			return fmt.Errorf("connect redis: %w", err)
+		}
+		defer enq.Close()
 		srv.Mount("POST /webhook/telegram",
-			telegram.NewHandler(submitter, menuStore, menuClient, panel, settings, cfg.BusinessID, cfg.TelegramWebhookSecret, log))
-		log.Info("telegram webhook enabled", "business_id", cfg.BusinessID, "mode", modeName(syncMode))
-		if cfg.TelegramWebhookSecret == "" {
-			log.Warn("telegram webhook secret is empty; requests are not verified")
-		}
-	}
-
-	// Magic-link FAQ + settings editor (needs DB + embedder).
-	if cfg.MagicLinkSecret != "" {
-		ed := editor.NewHandler(
-			store.NewFAQs(pool, embedder),
-			store.NewBusinesses(pool),
-			auth.NewSigner(cfg.MagicLinkSecret),
-			cfg.IsProduction() || strings.HasPrefix(cfg.PublicURL, "https"),
-			log,
-		)
-		srv.Mount("GET /edit", http.HandlerFunc(ed.HandleEdit))
-		srv.Mount("POST /edit/faqs", http.HandlerFunc(ed.HandleCreate))
-		srv.Mount("POST /edit/faqs/delete", http.HandlerFunc(ed.HandleDelete))
-		srv.Mount("POST /edit/settings", http.HandlerFunc(ed.HandleSettings))
-		log.Info("faq editor enabled")
+			telegram.NewHandler(enq, nil, nil, nil, nil, cfg.BusinessID, cfg.TelegramWebhookSecret, log))
+		log.Info("telegram webhook enabled (thin web tier, queue mode)")
 	}
 
 	return serve(cfg, srv, log)
-}
-
-// buildSubmitter returns the telegram.Submitter for the active mode: an inline
-// dispatcher (all-in-one) or a Redis enqueuer (queue mode). cleanup, if
-// non-nil, must be deferred by the caller.
-func buildSubmitter(cfg *config.Config, log *slog.Logger, pool *pgxpool.Pool, genProvider core.AIProvider, embedder store.Embedder, syncMode bool) (telegram.Submitter, func(), error) {
-	if !syncMode {
-		enq, err := queue.NewEnqueuer(cfg.RedisURL)
-		if err != nil {
-			return nil, nil, fmt.Errorf("connect redis: %w", err)
-		}
-		return enq, func() { _ = enq.Close() }, nil
-	}
-
-	engine := core.NewEngine(
-		store.NewFAQs(pool, embedder),
-		genProvider,
-		store.NewConversations(pool),
-		store.NewBusinesses(pool),
-		log,
-	)
-	var signer *auth.Signer
-	if cfg.MagicLinkSecret != "" {
-		signer = auth.NewSigner(cfg.MagicLinkSecret)
-	}
-	deliverer := app.NewChannelDeliverer(cfg)
-	adminSvc := admin.NewService(store.NewAdmins(pool), deliverer, signer, cfg.PublicURL)
-	dispatcher := app.NewDispatcher(engine, adminSvc, deliverer, log)
-	return app.NewSyncSubmitter(dispatcher), nil, nil
-}
-
-func modeName(syncMode bool) string {
-	if syncMode {
-		return "all-in-one"
-	}
-	return "queue"
 }
 
 // serve runs the HTTP server with graceful shutdown.

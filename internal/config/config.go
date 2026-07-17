@@ -29,6 +29,8 @@ type Config struct {
 	MagicLinkSecret string // HMAC key for signing edit links; empty disables the editor
 	PublicURL       string // public base URL used to build magic links
 
+	// Web API.
+	CORSOrigins []string // allowed origins for the /api/v1 endpoints ("*" = any)
 }
 
 // Load reads configuration from the environment, applying development-friendly
@@ -47,7 +49,8 @@ func Load() (*Config, error) {
 		TelegramAPIURL:        getEnv("ASKDESK_TELEGRAM_API_URL", ""),
 		MagicLinkSecret:       getEnv("ASKDESK_MAGIC_LINK_SECRET", ""),
 		// PublicURL falls back to Render's auto-injected RENDER_EXTERNAL_URL.
-		PublicURL: getEnv("ASKDESK_PUBLIC_URL", getEnv("RENDER_EXTERNAL_URL", "")),
+		PublicURL:   getEnv("ASKDESK_PUBLIC_URL", getEnv("RENDER_EXTERNAL_URL", "")),
+		CORSOrigins: splitCSV(getEnv("ASKDESK_CORS_ORIGINS", "*")),
 	}
 
 	// Port falls back to PORT (which Render and many PaaS hosts inject).
@@ -74,6 +77,17 @@ func Load() (*Config, error) {
 // IsProduction reports whether the service is running in production mode.
 func (c *Config) IsProduction() bool {
 	return strings.EqualFold(c.Env, "production")
+}
+
+// splitCSV splits a comma-separated list, trimming spaces and dropping empties.
+func splitCSV(s string) []string {
+	var out []string
+	for _, p := range strings.Split(s, ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 func getEnv(key, fallback string) string {

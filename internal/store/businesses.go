@@ -39,6 +39,9 @@ func (s BusinessSettings) resolve(businessName string) BusinessSettings {
 	}
 }
 
+// ErrUnknownAPIKey means no business matched the presented API key.
+var ErrUnknownAPIKey = errors.New("unknown api key")
+
 // Businesses reads and writes business rows and their settings.
 type Businesses struct {
 	pool *pgxpool.Pool
@@ -47,6 +50,22 @@ type Businesses struct {
 // NewBusinesses constructs a Businesses store.
 func NewBusinesses(pool *pgxpool.Pool) *Businesses {
 	return &Businesses{pool: pool}
+}
+
+// IDByAPIKey resolves a public API key to its business id (for the web API).
+func (b *Businesses) IDByAPIKey(ctx context.Context, apiKey string) (int64, error) {
+	if strings.TrimSpace(apiKey) == "" {
+		return 0, ErrUnknownAPIKey
+	}
+	var id int64
+	err := b.pool.QueryRow(ctx, "SELECT id FROM businesses WHERE api_key = $1", apiKey).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, ErrUnknownAPIKey
+	}
+	if err != nil {
+		return 0, fmt.Errorf("business by api key: %w", err)
+	}
+	return id, nil
 }
 
 // Settings returns fully resolved settings (defaults applied, {name} filled in)
