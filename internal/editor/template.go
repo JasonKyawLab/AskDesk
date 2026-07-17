@@ -1,6 +1,6 @@
 package editor
 
-// pageTemplate is the FAQ editor page. Data is the []store.FAQ list. All fields
+// pageTemplate is the FAQ editor page. Data is editor.pageData. All fields
 // render through html/template, which auto-escapes to prevent stored XSS.
 const pageTemplate = `<!doctype html>
 <html lang="en">
@@ -34,6 +34,23 @@ const pageTemplate = `<!doctype html>
 <body>
   <h1>FAQ editor</h1>
 
+  <h2>Business settings</h2>
+  <form method="post" action="/edit/settings">
+    <label>Shop name
+      <input name="display_name" value="{{.Settings.DisplayName}}" placeholder="e.g. MiniPOS" autocomplete="off">
+    </label>
+    <label>Welcome message <small>({name} = shop name)</small>
+      <textarea name="welcome_message" placeholder="👋 Welcome to {name} support! Pick a topic below, or just type your question.">{{.Settings.WelcomeMessage}}</textarea>
+    </label>
+    <label>Busy / fallback message
+      <textarea name="fallback_message" placeholder="Sorry, I'm a bit busy right now — leave your message and our team will follow up.">{{.Settings.FallbackMessage}}</textarea>
+    </label>
+    <label>“Ask a question” prompt
+      <textarea name="ask_prompt" placeholder="💬 Type your question below — I'll answer right away…">{{.Settings.AskPrompt}}</textarea>
+    </label>
+    <button class="primary" type="submit">Save settings</button>
+  </form>
+
   <h2>Add a FAQ</h2>
   <form method="post" action="/edit/faqs">
     <label>Question
@@ -49,8 +66,8 @@ const pageTemplate = `<!doctype html>
   </form>
 
   <h2>Existing FAQs</h2>
-  {{if not .}}<p class="empty">No FAQs yet.</p>{{end}}
-  {{range .}}
+  {{if not .FAQs}}<p class="empty">No FAQs yet.</p>{{end}}
+  {{range .FAQs}}
     <div class="faq">
       <div class="q">{{.Question}}</div>
       <div class="a">{{.Answer}}</div>

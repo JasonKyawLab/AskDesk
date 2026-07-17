@@ -23,6 +23,13 @@ type ConversationStore interface {
 	EnqueueUnanswered(ctx context.Context, conversationID int64, question string) error
 }
 
+// FallbackProvider returns the customer-facing message to send when the AI is
+// unavailable. It is per-business and looked up fresh, so it can be edited at
+// runtime. Implementations must never fail — return a sensible default.
+type FallbackProvider interface {
+	Fallback(ctx context.Context, businessID int64) string
+}
+
 // ConversationRecord is a single logged interaction (maps to the conversations table).
 type ConversationRecord struct {
 	BusinessID   int64
@@ -42,8 +49,6 @@ const (
 	// defaultConfidenceThreshold is the minimum best-match score to treat an
 	// answer as confident; below it, the question is flagged for an admin.
 	defaultConfidenceThreshold = 0.75
-	// defaultFallback is sent to the customer when the AI is unavailable.
-	defaultFallback = "Sorry, I'm a bit busy right now — please try again in a moment, or leave your message and our team will follow up."
 )
 
 // Engine is the shared reply engine. It is channel-agnostic and holds no state.
@@ -51,23 +56,20 @@ type Engine struct {
 	retriever Retriever
 	ai        AIProvider
 	store     ConversationStore
+	fallback  FallbackProvider
 	log       *slog.Logger
 	threshold float64
-	fallback  string
 }
 
-// NewEngine constructs an Engine. An empty fallback uses the default message.
-func NewEngine(r Retriever, ai AIProvider, store ConversationStore, log *slog.Logger, fallback string) *Engine {
-	if fallback == "" {
-		fallback = defaultFallback
-	}
+// NewEngine constructs an Engine.
+func NewEngine(r Retriever, ai AIProvider, store ConversationStore, fallback FallbackProvider, log *slog.Logger) *Engine {
 	return &Engine{
 		retriever: r,
 		ai:        ai,
 		store:     store,
+		fallback:  fallback,
 		log:       log,
 		threshold: defaultConfidenceThreshold,
-		fallback:  fallback,
 	}
 }
 
@@ -109,10 +111,10 @@ func (e *Engine) GenerateCustomerReply(ctx context.Context, msg Message) (Reply,
 }
 
 // degrade records the question as unanswered (so an admin sees it) and returns
-// the fallback message. Used when a provider is unavailable.
+// the per-business fallback message. Used when a provider is unavailable.
 func (e *Engine) degrade(ctx context.Context, msg Message) Reply {
 	e.record(ctx, msg, "", nil, 0, false)
-	return Reply{Text: e.fallback, Answered: false}
+	return Reply{Text: e.fallback.Fallback(ctx, msg.BusinessID), Answered: false}
 }
 
 // record logs the conversation and, when not answered, flags it for an admin.

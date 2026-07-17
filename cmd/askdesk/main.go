@@ -88,11 +88,12 @@ func run() error {
 			defer cleanup()
 		}
 
-		// Button menu + admin panel (data-driven) need the database.
+		// Button menu + admin panel + settings (data-driven) need the database.
 		var (
 			menuStore  telegram.MenuStore
 			menuClient telegram.MenuClient
 			panel      *telegram.AdminPanel
+			settings   telegram.SettingsStore
 		)
 		if pool != nil {
 			var clientOpts []telegram.ClientOption
@@ -102,6 +103,7 @@ func run() error {
 			client := telegram.NewClient(cfg.TelegramBotToken, clientOpts...)
 			menuStore = store.NewFAQs(pool, embedder)
 			menuClient = client
+			settings = store.NewBusinesses(pool)
 
 			var signer *auth.Signer
 			if cfg.MagicLinkSecret != "" {
@@ -112,17 +114,18 @@ func run() error {
 		}
 
 		srv.Mount("POST /webhook/telegram",
-			telegram.NewHandler(submitter, menuStore, menuClient, panel, cfg.BusinessID, cfg.TelegramWebhookSecret, log))
+			telegram.NewHandler(submitter, menuStore, menuClient, panel, settings, cfg.BusinessID, cfg.TelegramWebhookSecret, log))
 		log.Info("telegram webhook enabled", "business_id", cfg.BusinessID, "mode", modeName(syncMode))
 		if cfg.TelegramWebhookSecret == "" {
 			log.Warn("telegram webhook secret is empty; requests are not verified")
 		}
 	}
 
-	// Magic-link FAQ editor (needs DB + embedder).
+	// Magic-link FAQ + settings editor (needs DB + embedder).
 	if cfg.MagicLinkSecret != "" {
 		ed := editor.NewHandler(
 			store.NewFAQs(pool, embedder),
+			store.NewBusinesses(pool),
 			auth.NewSigner(cfg.MagicLinkSecret),
 			cfg.IsProduction() || strings.HasPrefix(cfg.PublicURL, "https"),
 			log,
@@ -130,6 +133,7 @@ func run() error {
 		srv.Mount("GET /edit", http.HandlerFunc(ed.HandleEdit))
 		srv.Mount("POST /edit/faqs", http.HandlerFunc(ed.HandleCreate))
 		srv.Mount("POST /edit/faqs/delete", http.HandlerFunc(ed.HandleDelete))
+		srv.Mount("POST /edit/settings", http.HandlerFunc(ed.HandleSettings))
 		log.Info("faq editor enabled")
 	}
 
@@ -152,8 +156,8 @@ func buildSubmitter(cfg *config.Config, log *slog.Logger, pool *pgxpool.Pool, ge
 		store.NewFAQs(pool, embedder),
 		genProvider,
 		store.NewConversations(pool),
+		store.NewBusinesses(pool),
 		log,
-		cfg.FallbackMessage,
 	)
 	var signer *auth.Signer
 	if cfg.MagicLinkSecret != "" {

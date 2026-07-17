@@ -31,7 +31,30 @@ const (
 	cbAsk  = "ask"
 )
 
-const welcomeText = "👋 Welcome! Pick a topic below, or just type your question."
+const (
+	defaultWelcome = "👋 Welcome! Pick a topic below, or just type your question."
+	defaultAsk     = "💬 Type your question below — I'll answer right away, and if I can't, our team will follow up here."
+)
+
+// welcomeText returns the business's configured welcome message (or the default).
+func (h *Handler) welcomeText(ctx context.Context) string {
+	if h.settings != nil {
+		if s, err := h.settings.Settings(ctx, h.businessID); err == nil && s.WelcomeMessage != "" {
+			return s.WelcomeMessage
+		}
+	}
+	return defaultWelcome
+}
+
+// askText returns the business's configured ask prompt (or the default).
+func (h *Handler) askText(ctx context.Context) string {
+	if h.settings != nil {
+		if s, err := h.settings.Settings(ctx, h.businessID); err == nil && s.AskPrompt != "" {
+			return s.AskPrompt
+		}
+	}
+	return defaultAsk
+}
 
 // isGreeting reports whether text should open the menu instead of the AI.
 func isGreeting(text string) bool {
@@ -74,7 +97,7 @@ func (h *Handler) handleCallback(ctx context.Context, cb *callbackQuery) {
 	data := cb.Data
 	switch {
 	case data == cbAsk:
-		text, kb = h.askScreen()
+		text, kb = h.askScreen(ctx)
 	case strings.HasPrefix(data, "c:"):
 		text, kb, err = h.categoryScreen(ctx, strings.TrimPrefix(data, "c:"))
 	case strings.HasPrefix(data, "q:"):
@@ -121,7 +144,7 @@ func (h *Handler) mainMenu(ctx context.Context, fromID int64) (string, Keyboard,
 	if h.panel != nil && h.panel.isAdmin(ctx, fromID) {
 		kb = append(kb, []Button{{Text: "🛠 Admin panel", Data: cbPanel}})
 	}
-	return welcomeText, kb, nil
+	return h.welcomeText(ctx), kb, nil
 }
 
 // categoryScreen lists a category's questions, one per row.
@@ -154,9 +177,8 @@ func (h *Handler) answerScreen(ctx context.Context, id int64) (string, Keyboard,
 }
 
 // askScreen invites free text (which flows to the AI as usual).
-func (h *Handler) askScreen() (string, Keyboard) {
-	text := "💬 Type your question below — I'll answer right away, and if I can't, our team will follow up here."
-	return text, Keyboard{{{Text: "🏠 Main menu", Data: cbMain}}}
+func (h *Handler) askScreen(ctx context.Context) (string, Keyboard) {
+	return h.askText(ctx), Keyboard{{{Text: "🏠 Main menu", Data: cbMain}}}
 }
 
 // truncLabel keeps button labels within Telegram's comfortable display width.

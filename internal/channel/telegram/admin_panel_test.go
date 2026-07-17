@@ -65,7 +65,7 @@ func (f *fakePanelClient) SendMessage(_ context.Context, chatID int64, text stri
 
 func panelHandler(sub *fakeSubmitter, s *fakeAdminStore, c *fakePanelClient) *Handler {
 	panel := NewAdminPanel(s, c, nil, "", 1, discardLogger())
-	return NewHandler(sub, nil, nil, panel, 1, "", discardLogger())
+	return NewHandler(sub, nil, nil, panel, nil, 1, "", discardLogger())
 }
 
 func TestPanel_AdminCommandShowsPanel(t *testing.T) {
@@ -156,7 +156,7 @@ func TestPanel_AdminGreetingShowsPanelButton(t *testing.T) {
 	sub := &fakeSubmitter{}
 	client := &fakePanelClient{}
 	panel := NewAdminPanel(&fakeAdminStore{admin: true}, client, nil, "", 1, discardLogger())
-	h := NewHandler(sub, fakeMenuStore{}, client, panel, 1, "", discardLogger())
+	h := NewHandler(sub, fakeMenuStore{}, client, panel, nil, 1, "", discardLogger())
 
 	post(h, `{"message":{"text":"hi","chat":{"id":5},"from":{"id":9}}}`)
 
@@ -170,7 +170,7 @@ func TestPanel_CustomerGreetingHasNoPanelButton(t *testing.T) {
 	sub := &fakeSubmitter{}
 	client := &fakePanelClient{}
 	panel := NewAdminPanel(&fakeAdminStore{admin: false}, client, nil, "", 1, discardLogger())
-	h := NewHandler(sub, fakeMenuStore{}, client, panel, 1, "", discardLogger())
+	h := NewHandler(sub, fakeMenuStore{}, client, panel, nil, 1, "", discardLogger())
 
 	post(h, `{"message":{"text":"hi","chat":{"id":5},"from":{"id":9}}}`)
 

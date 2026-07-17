@@ -31,7 +31,7 @@ const updateJSON = `{"message":{"text":"do you deliver?","chat":{"id":555},"from
 
 func TestHandler_NormalizesAndSubmits(t *testing.T) {
 	sub := &fakeSubmitter{}
-	h := NewHandler(sub, nil, nil, nil, 1, "sekret", discardLogger())
+	h := NewHandler(sub, nil, nil, nil, nil, 1, "sekret", discardLogger())
 
 	req := httptest.NewRequest(http.MethodPost, "/telegram", strings.NewReader(updateJSON))
 	req.Header.Set("X-Telegram-Bot-Api-Secret-Token", "sekret")
@@ -58,7 +58,7 @@ func TestHandler_NormalizesAndSubmits(t *testing.T) {
 
 func TestHandler_RejectsBadSecret(t *testing.T) {
 	sub := &fakeSubmitter{}
-	h := NewHandler(sub, nil, nil, nil, 1, "sekret", discardLogger())
+	h := NewHandler(sub, nil, nil, nil, nil, 1, "sekret", discardLogger())
 
 	req := httptest.NewRequest(http.MethodPost, "/telegram", strings.NewReader(updateJSON))
 	req.Header.Set("X-Telegram-Bot-Api-Secret-Token", "wrong")
@@ -76,7 +76,7 @@ func TestHandler_RejectsBadSecret(t *testing.T) {
 
 func TestHandler_IgnoresNonTextUpdate(t *testing.T) {
 	sub := &fakeSubmitter{}
-	h := NewHandler(sub, nil, nil, nil, 1, "", discardLogger())
+	h := NewHandler(sub, nil, nil, nil, nil, 1, "", discardLogger())
 
 	req := httptest.NewRequest(http.MethodPost, "/telegram", strings.NewReader(`{"message":{"chat":{"id":1}}}`))
 	rec := httptest.NewRecorder()

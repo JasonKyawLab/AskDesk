@@ -57,8 +57,8 @@ func run() error {
 		store.NewFAQs(pool, embedder),
 		genProvider,
 		store.NewConversations(pool),
+		store.NewBusinesses(pool),
 		log,
-		cfg.FallbackMessage,
 	)
 
 	var signer *auth.Signer

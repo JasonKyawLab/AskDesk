@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/JasonKyawLab/AskDesk/internal/core"
+	"github.com/JasonKyawLab/AskDesk/internal/store"
 )
 
 // Submitter accepts a normalized message plus the channel reply address and
@@ -26,23 +27,30 @@ type Submitter interface {
 // AI); free-typed questions flow through the Submitter to the engine.
 type Handler struct {
 	submitter  Submitter
-	menu       MenuStore   // nil disables the button menu
-	menuClient MenuClient  // nil disables the button menu
-	panel      *AdminPanel // nil disables the admin panel
+	menu       MenuStore     // nil disables the button menu
+	menuClient MenuClient    // nil disables the button menu
+	panel      *AdminPanel   // nil disables the admin panel
+	settings   SettingsStore // nil uses built-in default copy
 	businessID int64
 	secret     string
 	log        *slog.Logger
 }
 
+// SettingsStore provides per-business presentation strings (welcome, ask prompt).
+type SettingsStore interface {
+	Settings(ctx context.Context, businessID int64) (store.BusinessSettings, error)
+}
+
 // NewHandler builds the webhook handler. secret is the Telegram webhook secret
 // token; an empty secret disables verification (development only). menu,
-// menuClient, and panel may be nil, which disables those features.
-func NewHandler(submitter Submitter, menu MenuStore, menuClient MenuClient, panel *AdminPanel, businessID int64, secret string, log *slog.Logger) *Handler {
+// menuClient, panel, and settings may be nil, which disables those features.
+func NewHandler(submitter Submitter, menu MenuStore, menuClient MenuClient, panel *AdminPanel, settings SettingsStore, businessID int64, secret string, log *slog.Logger) *Handler {
 	return &Handler{
 		submitter:  submitter,
 		menu:       menu,
 		menuClient: menuClient,
 		panel:      panel,
+		settings:   settings,
 		businessID: businessID,
 		secret:     secret,
 		log:        log,

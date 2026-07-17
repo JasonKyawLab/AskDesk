@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/JasonKyawLab/AskDesk/internal/auth"
@@ -28,25 +29,39 @@ type FAQStore interface {
 	Delete(ctx context.Context, businessID, id int64) error
 }
 
+// SettingsStore is the business-settings access the editor needs.
+type SettingsStore interface {
+	RawSettings(ctx context.Context, businessID int64) (store.BusinessSettings, error)
+	UpdateSettings(ctx context.Context, businessID int64, s store.BusinessSettings) error
+}
+
 // Handler serves the editor endpoints.
 type Handler struct {
-	faqs   FAQStore
-	signer *auth.Signer
-	secure bool // set Secure on the session cookie (HTTPS deployments)
-	log    *slog.Logger
-	tmpl   *template.Template
+	faqs     FAQStore
+	settings SettingsStore
+	signer   *auth.Signer
+	secure   bool // set Secure on the session cookie (HTTPS deployments)
+	log      *slog.Logger
+	tmpl     *template.Template
 }
 
 // NewHandler builds the editor handler. secure should be true in production so
 // the session cookie is only sent over HTTPS.
-func NewHandler(faqs FAQStore, signer *auth.Signer, secure bool, log *slog.Logger) *Handler {
+func NewHandler(faqs FAQStore, settings SettingsStore, signer *auth.Signer, secure bool, log *slog.Logger) *Handler {
 	return &Handler{
-		faqs:   faqs,
-		signer: signer,
-		secure: secure,
-		log:    log,
-		tmpl:   template.Must(template.New("page").Parse(pageTemplate)),
+		faqs:     faqs,
+		settings: settings,
+		signer:   signer,
+		secure:   secure,
+		log:      log,
+		tmpl:     template.Must(template.New("page").Parse(pageTemplate)),
 	}
+}
+
+// pageData is the editor page model.
+type pageData struct {
+	Settings store.BusinessSettings
+	FAQs     []store.FAQ
 }
 
 // HandleEdit exchanges a magic-link token for a session, then renders the list.
@@ -74,7 +89,31 @@ func (h *Handler) HandleEdit(w http.ResponseWriter, r *http.Request) {
 		h.serverError(w, "load faqs", err)
 		return
 	}
-	h.render(w, faqs)
+	settings, err := h.settings.RawSettings(r.Context(), claims.BusinessID)
+	if err != nil {
+		h.serverError(w, "load settings", err)
+		return
+	}
+	h.render(w, pageData{Settings: settings, FAQs: faqs})
+}
+
+// HandleSettings saves the business settings (name and messages).
+func (h *Handler) HandleSettings(w http.ResponseWriter, r *http.Request) {
+	claims, ok := h.requireSession(w, r)
+	if !ok {
+		return
+	}
+	s := store.BusinessSettings{
+		DisplayName:     strings.TrimSpace(r.FormValue("display_name")),
+		WelcomeMessage:  strings.TrimSpace(r.FormValue("welcome_message")),
+		FallbackMessage: strings.TrimSpace(r.FormValue("fallback_message")),
+		AskPrompt:       strings.TrimSpace(r.FormValue("ask_prompt")),
+	}
+	if err := h.settings.UpdateSettings(r.Context(), claims.BusinessID, s); err != nil {
+		h.serverError(w, "update settings", err)
+		return
+	}
+	http.Redirect(w, r, "/edit", http.StatusSeeOther)
 }
 
 // HandleCreate adds a FAQ from the form.
@@ -146,10 +185,10 @@ func (h *Handler) requireSession(w http.ResponseWriter, r *http.Request) (auth.C
 	return claims, true
 }
 
-func (h *Handler) render(w http.ResponseWriter, faqs []store.FAQ) {
+func (h *Handler) render(w http.ResponseWriter, data pageData) {
 	h.securityHeaders(w)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := h.tmpl.Execute(w, faqs); err != nil {
+	if err := h.tmpl.Execute(w, data); err != nil {
 		h.log.Error("editor: render failed", "error", err)
 	}
 }

@@ -1,0 +1,122 @@
+package store
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"strings"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+)
+
+// BusinessSettings are per-business, runtime-editable presentation strings.
+// Empty fields fall back to defaults; "{name}" is replaced with the shop name.
+type BusinessSettings struct {
+	DisplayName     string `json:"display_name"`
+	WelcomeMessage  string `json:"welcome_message"`
+	FallbackMessage string `json:"fallback_message"`
+	AskPrompt       string `json:"ask_prompt"`
+}
+
+// Defaults for each setting (used when a field is empty).
+const (
+	DefaultWelcome  = "👋 Welcome to {name} support! Pick a topic below, or just type your question."
+	DefaultFallback = "Sorry, I'm a bit busy right now — please try again in a moment, or leave your message and our team will follow up."
+	DefaultAsk      = "💬 Type your question below — I'll answer right away, and if I can't, our team will follow up here."
+)
+
+// resolve fills empty fields with defaults and substitutes {name}. businessName
+// is the businesses.name column, used when DisplayName is unset.
+func (s BusinessSettings) resolve(businessName string) BusinessSettings {
+	name := firstNonEmpty(s.DisplayName, businessName)
+	return BusinessSettings{
+		DisplayName:     name,
+		WelcomeMessage:  subName(firstNonEmpty(s.WelcomeMessage, DefaultWelcome), name),
+		FallbackMessage: subName(firstNonEmpty(s.FallbackMessage, DefaultFallback), name),
+		AskPrompt:       subName(firstNonEmpty(s.AskPrompt, DefaultAsk), name),
+	}
+}
+
+// Businesses reads and writes business rows and their settings.
+type Businesses struct {
+	pool *pgxpool.Pool
+}
+
+// NewBusinesses constructs a Businesses store.
+func NewBusinesses(pool *pgxpool.Pool) *Businesses {
+	return &Businesses{pool: pool}
+}
+
+// Settings returns fully resolved settings (defaults applied, {name} filled in)
+// — what the bot renders.
+func (b *Businesses) Settings(ctx context.Context, businessID int64) (BusinessSettings, error) {
+	name, raw, err := b.load(ctx, businessID)
+	if err != nil {
+		return BusinessSettings{}, err
+	}
+	return raw.resolve(name), nil
+}
+
+// RawSettings returns the stored (unresolved) settings — what the edit form
+// shows so an admin edits their own text, not the filled-in defaults.
+func (b *Businesses) RawSettings(ctx context.Context, businessID int64) (BusinessSettings, error) {
+	_, raw, err := b.load(ctx, businessID)
+	return raw, err
+}
+
+// UpdateSettings persists the settings for a business.
+func (b *Businesses) UpdateSettings(ctx context.Context, businessID int64, s BusinessSettings) error {
+	data, err := json.Marshal(s)
+	if err != nil {
+		return fmt.Errorf("marshal settings: %w", err)
+	}
+	if _, err := b.pool.Exec(ctx, "UPDATE businesses SET settings = $2 WHERE id = $1", businessID, data); err != nil {
+		return fmt.Errorf("update settings: %w", err)
+	}
+	return nil
+}
+
+// Fallback returns the resolved fallback message, or the plain default if
+// settings can't be loaded. It implements core.FallbackProvider and never errors.
+func (b *Businesses) Fallback(ctx context.Context, businessID int64) string {
+	s, err := b.Settings(ctx, businessID)
+	if err != nil {
+		return DefaultFallback
+	}
+	return s.FallbackMessage
+}
+
+func (b *Businesses) load(ctx context.Context, businessID int64) (string, BusinessSettings, error) {
+	const q = `SELECT name, coalesce(settings, '{}') FROM businesses WHERE id = $1`
+	var name string
+	var raw []byte
+	err := b.pool.QueryRow(ctx, q, businessID).Scan(&name, &raw)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", BusinessSettings{}, nil
+	}
+	if err != nil {
+		return "", BusinessSettings{}, fmt.Errorf("load business: %w", err)
+	}
+	var s BusinessSettings
+	if len(raw) > 0 {
+		if err := json.Unmarshal(raw, &s); err != nil {
+			return "", BusinessSettings{}, fmt.Errorf("parse settings: %w", err)
+		}
+	}
+	return name, s, nil
+}
+
+func firstNonEmpty(vals ...string) string {
+	for _, v := range vals {
+		if strings.TrimSpace(v) != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+func subName(s, name string) string {
+	return strings.ReplaceAll(s, "{name}", name)
+}
