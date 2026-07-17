@@ -41,7 +41,9 @@ type update struct {
 			ID int64 `json:"id"`
 		} `json:"chat"`
 		From struct {
-			ID int64 `json:"id"`
+			ID        int64  `json:"id"`
+			FirstName string `json:"first_name"`
+			Username  string `json:"username"`
 		} `json:"from"`
 	} `json:"message"`
 }
@@ -72,6 +74,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		BusinessID: h.businessID,
 		Channel:    core.ChannelTelegram,
 		UserID:     strconv.FormatInt(upd.Message.From.ID, 10),
+		UserName:   displayName(upd.Message.From.FirstName, upd.Message.From.Username),
 		Text:       upd.Message.Text,
 	}
 	replyTo := strconv.FormatInt(upd.Message.Chat.ID, 10)
@@ -80,6 +83,21 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.log.Error("telegram webhook: submit failed", "error", err, "business_id", h.businessID)
 	}
 	w.WriteHeader(http.StatusOK)
+}
+
+// displayName builds a readable customer name from Telegram's first name and
+// username, e.g. "Aung (@aungshop)".
+func displayName(firstName, username string) string {
+	switch {
+	case firstName != "" && username != "":
+		return firstName + " (@" + username + ")"
+	case firstName != "":
+		return firstName
+	case username != "":
+		return "@" + username
+	default:
+		return ""
+	}
 }
 
 // validSecret compares the request's secret-token header in constant time.

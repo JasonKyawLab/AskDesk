@@ -128,13 +128,15 @@ func buildSubmitter(cfg *config.Config, log *slog.Logger, pool *pgxpool.Pool, ge
 		genProvider,
 		store.NewConversations(pool),
 		log,
+		cfg.FallbackMessage,
 	)
 	var signer *auth.Signer
 	if cfg.MagicLinkSecret != "" {
 		signer = auth.NewSigner(cfg.MagicLinkSecret)
 	}
-	adminSvc := admin.NewService(store.NewAdmins(pool), signer, cfg.PublicURL)
-	dispatcher := app.NewDispatcher(engine, adminSvc, app.NewChannelDeliverer(cfg), log)
+	deliverer := app.NewChannelDeliverer(cfg)
+	adminSvc := admin.NewService(store.NewAdmins(pool), deliverer, signer, cfg.PublicURL)
+	dispatcher := app.NewDispatcher(engine, adminSvc, deliverer, log)
 	return app.NewSyncSubmitter(dispatcher), nil, nil
 }
 

@@ -19,6 +19,7 @@ type Message struct {
 	BusinessID int64
 	Channel    Channel
 	UserID     string // the user's id within their channel (e.g. Telegram user_id)
+	UserName   string // display name, for admin visibility (may be empty)
 	Text       string
 }
 

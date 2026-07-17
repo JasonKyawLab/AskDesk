@@ -61,12 +61,13 @@ func (a *Admins) TodayStats(ctx context.Context, businessID int64) (DailyStats, 
 type PendingQuestion struct {
 	ID       int64
 	Question string
+	UserName string // customer display name, may be empty
 }
 
 // PendingUnanswered returns up to limit pending questions for a business.
 func (a *Admins) PendingUnanswered(ctx context.Context, businessID int64, limit int) ([]PendingQuestion, error) {
 	const q = `
-		SELECT u.id, u.question
+		SELECT u.id, u.question, coalesce(c.external_user_name, '')
 		FROM unanswered_queue u
 		JOIN conversations c ON c.id = u.conversation_id
 		WHERE c.business_id = $1 AND u.status = 'pending'
@@ -82,10 +83,48 @@ func (a *Admins) PendingUnanswered(ctx context.Context, businessID int64, limit 
 	var out []PendingQuestion
 	for rows.Next() {
 		var p PendingQuestion
-		if err := rows.Scan(&p.ID, &p.Question); err != nil {
+		if err := rows.Scan(&p.ID, &p.Question, &p.UserName); err != nil {
 			return nil, fmt.Errorf("scan pending: %w", err)
 		}
 		out = append(out, p)
 	}
 	return out, rows.Err()
+}
+
+// UnansweredTarget is who to reply to for a pending question.
+type UnansweredTarget struct {
+	Channel  core.Channel
+	ReplyTo  string // channel reply address (e.g. Telegram chat id)
+	Question string
+}
+
+// GetUnanswered returns the reply target for a pending queue item, scoped to the
+// business so an admin can only reply within their own tenant.
+func (a *Admins) GetUnanswered(ctx context.Context, businessID, id int64) (UnansweredTarget, error) {
+	const q = `
+		SELECT c.channel, c.external_user_id, u.question
+		FROM unanswered_queue u
+		JOIN conversations c ON c.id = u.conversation_id
+		WHERE u.id = $1 AND c.business_id = $2 AND u.status = 'pending'`
+
+	var t UnansweredTarget
+	var channel string
+	if err := a.pool.QueryRow(ctx, q, id, businessID).Scan(&channel, &t.ReplyTo, &t.Question); err != nil {
+		return UnansweredTarget{}, fmt.Errorf("get unanswered: %w", err)
+	}
+	t.Channel = core.Channel(channel)
+	return t, nil
+}
+
+// ResolveUnanswered marks a pending item resolved, scoped to the business.
+func (a *Admins) ResolveUnanswered(ctx context.Context, businessID, id int64) error {
+	const q = `
+		UPDATE unanswered_queue u
+		SET status = 'resolved'
+		FROM conversations c
+		WHERE u.conversation_id = c.id AND u.id = $1 AND c.business_id = $2`
+	if _, err := a.pool.Exec(ctx, q, id, businessID); err != nil {
+		return fmt.Errorf("resolve unanswered: %w", err)
+	}
+	return nil
 }

@@ -46,7 +46,7 @@ func (f *fakeStore) EnqueueUnanswered(context.Context, int64, string) error {
 }
 
 func newTestEngine(r Retriever, ai AIProvider, s ConversationStore) *Engine {
-	return NewEngine(r, ai, s, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	return NewEngine(r, ai, s, slog.New(slog.NewTextHandler(io.Discard, nil)), "fallback")
 }
 
 // --- tests ---
@@ -107,19 +107,35 @@ func TestGenerateCustomerReply_NoMatches(t *testing.T) {
 	}
 }
 
-func TestGenerateCustomerReply_RetrieverError(t *testing.T) {
-	engine := newTestEngine(&fakeRetriever{err: errors.New("db down")}, &fakeAI{}, &fakeStore{})
+func TestGenerateCustomerReply_RetrieverError_Degrades(t *testing.T) {
+	store := &fakeStore{}
+	engine := newTestEngine(&fakeRetriever{err: errors.New("db down")}, &fakeAI{}, store)
 
-	if _, err := engine.GenerateCustomerReply(context.Background(), Message{BusinessID: 1, Text: "hi"}); err == nil {
-		t.Fatal("expected error when retriever fails")
+	reply, err := engine.GenerateCustomerReply(context.Background(), Message{BusinessID: 1, Text: "hi"})
+	if err != nil {
+		t.Fatalf("expected graceful degrade, got error: %v", err)
+	}
+	if reply.Answered || reply.Text != "fallback" {
+		t.Errorf("expected fallback reply, got %+v", reply)
+	}
+	if !store.enqueued {
+		t.Error("degraded question should be enqueued as unanswered")
 	}
 }
 
-func TestGenerateCustomerReply_AIError(t *testing.T) {
+func TestGenerateCustomerReply_AIError_Degrades(t *testing.T) {
 	retriever := &fakeRetriever{matches: []Match{{FAQID: 1, Score: 0.9}}}
-	engine := newTestEngine(retriever, &fakeAI{err: errors.New("all providers down")}, &fakeStore{})
+	store := &fakeStore{}
+	engine := newTestEngine(retriever, &fakeAI{err: errors.New("all providers down")}, store)
 
-	if _, err := engine.GenerateCustomerReply(context.Background(), Message{BusinessID: 1, Text: "hi"}); err == nil {
-		t.Fatal("expected error when AI provider fails")
+	reply, err := engine.GenerateCustomerReply(context.Background(), Message{BusinessID: 1, Text: "hi"})
+	if err != nil {
+		t.Fatalf("expected graceful degrade, got error: %v", err)
+	}
+	if reply.Answered || reply.Text != "fallback" {
+		t.Errorf("expected fallback reply, got %+v", reply)
+	}
+	if !store.enqueued {
+		t.Error("degraded question should be enqueued as unanswered")
 	}
 }

@@ -23,14 +23,14 @@ func NewConversations(pool *pgxpool.Pool) *Conversations {
 func (c *Conversations) LogConversation(ctx context.Context, rec core.ConversationRecord) (int64, error) {
 	const q = `
 		INSERT INTO conversations
-			(business_id, channel, external_user_id, question,
+			(business_id, channel, external_user_id, external_user_name, question,
 			 matched_faq_id, ai_answer, confidence_score, was_answered)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		RETURNING id`
 
 	var id int64
 	err := c.pool.QueryRow(ctx, q,
-		rec.BusinessID, string(rec.Channel), rec.UserID, rec.Question,
+		rec.BusinessID, string(rec.Channel), rec.UserID, nullIfEmpty(rec.UserName), rec.Question,
 		rec.MatchedFAQID, rec.AIAnswer, rec.Confidence, rec.WasAnswered,
 	).Scan(&id)
 	if err != nil {

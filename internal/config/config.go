@@ -28,6 +28,9 @@ type Config struct {
 	// Magic-link FAQ editor.
 	MagicLinkSecret string // HMAC key for signing edit links; empty disables the editor
 	PublicURL       string // public base URL used to build magic links
+
+	// FallbackMessage is sent to a customer when the AI is unavailable.
+	FallbackMessage string
 }
 
 // Load reads configuration from the environment, applying development-friendly
@@ -45,6 +48,7 @@ func Load() (*Config, error) {
 		TelegramWebhookSecret: getEnv("ASKDESK_TELEGRAM_WEBHOOK_SECRET", ""),
 		TelegramAPIURL:        getEnv("ASKDESK_TELEGRAM_API_URL", ""),
 		MagicLinkSecret:       getEnv("ASKDESK_MAGIC_LINK_SECRET", ""),
+		FallbackMessage:       getEnv("ASKDESK_FALLBACK_MESSAGE", ""),
 		// PublicURL falls back to Render's auto-injected RENDER_EXTERNAL_URL.
 		PublicURL: getEnv("ASKDESK_PUBLIC_URL", getEnv("RENDER_EXTERNAL_URL", "")),
 	}
