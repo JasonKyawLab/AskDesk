@@ -47,8 +47,8 @@ func (h *Handler) menusEnabled() bool {
 }
 
 // showMainMenu sends a fresh menu message (used for greetings).
-func (h *Handler) showMainMenu(ctx context.Context, chatID int64) {
-	text, kb, err := h.mainMenu(ctx)
+func (h *Handler) showMainMenu(ctx context.Context, chatID, fromID int64) {
+	text, kb, err := h.mainMenu(ctx, fromID)
 	if err != nil {
 		h.log.Error("menu: build main failed", "error", err)
 		return
@@ -83,7 +83,7 @@ func (h *Handler) handleCallback(ctx context.Context, cb *callbackQuery) {
 			text, kb, err = h.answerScreen(ctx, id)
 		}
 	default: // cbMain and anything unknown
-		text, kb, err = h.mainMenu(ctx)
+		text, kb, err = h.mainMenu(ctx, cb.From.ID)
 	}
 	if err != nil {
 		h.log.Error("menu: build screen failed", "error", err, "data", data)
@@ -97,8 +97,9 @@ func (h *Handler) handleCallback(ctx context.Context, cb *callbackQuery) {
 	_ = h.menuClient.AnswerCallback(ctx, cb.ID)
 }
 
-// mainMenu lists categories (two per row) plus the free-text option.
-func (h *Handler) mainMenu(ctx context.Context) (string, Keyboard, error) {
+// mainMenu lists categories (two per row) plus the free-text option. Admins
+// also get an entry into their panel (identity-checked; customers never see it).
+func (h *Handler) mainMenu(ctx context.Context, fromID int64) (string, Keyboard, error) {
 	cats, err := h.menu.Categories(ctx, h.businessID)
 	if err != nil {
 		return "", nil, err
@@ -117,6 +118,9 @@ func (h *Handler) mainMenu(ctx context.Context) (string, Keyboard, error) {
 		kb = append(kb, row)
 	}
 	kb = append(kb, []Button{{Text: "💬 Ask a question", Data: cbAsk}})
+	if h.panel != nil && h.panel.isAdmin(ctx, fromID) {
+		kb = append(kb, []Button{{Text: "🛠 Admin panel", Data: cbPanel}})
+	}
 	return welcomeText, kb, nil
 }
 

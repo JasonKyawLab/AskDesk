@@ -152,6 +152,37 @@ func TestPanel_ForgedCallbackFromNonAdminIgnored(t *testing.T) {
 	}
 }
 
+func TestPanel_AdminGreetingShowsPanelButton(t *testing.T) {
+	sub := &fakeSubmitter{}
+	client := &fakePanelClient{}
+	panel := NewAdminPanel(&fakeAdminStore{admin: true}, client, nil, "", 1, discardLogger())
+	h := NewHandler(sub, fakeMenuStore{}, client, panel, 1, "", discardLogger())
+
+	post(h, `{"message":{"text":"hi","chat":{"id":5},"from":{"id":9}}}`)
+
+	last := client.sentKb[len(client.sentKb)-1]
+	if last[0].Data != cbPanel {
+		t.Errorf("admin greeting should end with the panel button, got %+v", last)
+	}
+}
+
+func TestPanel_CustomerGreetingHasNoPanelButton(t *testing.T) {
+	sub := &fakeSubmitter{}
+	client := &fakePanelClient{}
+	panel := NewAdminPanel(&fakeAdminStore{admin: false}, client, nil, "", 1, discardLogger())
+	h := NewHandler(sub, fakeMenuStore{}, client, panel, 1, "", discardLogger())
+
+	post(h, `{"message":{"text":"hi","chat":{"id":5},"from":{"id":9}}}`)
+
+	for _, row := range client.sentKb {
+		for _, b := range row {
+			if b.Data == cbPanel {
+				t.Fatal("customer must not see the admin panel button")
+			}
+		}
+	}
+}
+
 func TestPanel_CustomerTextUnaffected(t *testing.T) {
 	sub := &fakeSubmitter{}
 	s := &fakeAdminStore{admin: false} // customer, no pending state

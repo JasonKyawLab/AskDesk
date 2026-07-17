@@ -133,7 +133,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Greetings open the menu instead of spending an AI call.
 	if h.menusEnabled() && isGreeting(text) {
-		h.showMainMenu(r.Context(), upd.Message.Chat.ID)
+		h.showMainMenu(r.Context(), upd.Message.Chat.ID, upd.Message.From.ID)
 		w.WriteHeader(http.StatusOK)
 		return
 	}
