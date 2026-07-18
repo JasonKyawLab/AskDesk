@@ -65,7 +65,7 @@ func run() error {
 	if cfg.MagicLinkSecret != "" {
 		signer = auth.NewSigner(cfg.MagicLinkSecret)
 	}
-	deliverer := app.NewChannelDeliverer(cfg)
+	deliverer := app.NewChannelDeliverer(cfg, store.NewWebReplies(pool))
 	adminSvc := admin.NewService(store.NewAdmins(pool), deliverer, signer, cfg.PublicURL)
 
 	dispatcher := app.NewDispatcher(engine, adminSvc, deliverer, log)

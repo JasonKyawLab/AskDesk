@@ -63,8 +63,20 @@ func (f *fakePanelClient) SendMessage(_ context.Context, chatID int64, text stri
 	return nil
 }
 
+type fakePanelDeliverer struct {
+	channel core.Channel
+	replyTo string
+	text    string
+	called  bool
+}
+
+func (d *fakePanelDeliverer) Deliver(_ context.Context, ch core.Channel, replyTo, text string) error {
+	d.called, d.channel, d.replyTo, d.text = true, ch, replyTo, text
+	return nil
+}
+
 func panelHandler(sub *fakeSubmitter, s *fakeAdminStore, c *fakePanelClient) *Handler {
-	panel := NewAdminPanel(s, c, nil, "", 1, discardLogger())
+	panel := NewAdminPanel(s, c, &fakePanelDeliverer{}, nil, "", 1, discardLogger())
 	return NewHandler(sub, nil, nil, panel, nil, 1, "", discardLogger())
 }
 
@@ -107,7 +119,9 @@ func TestPanel_TapReplyThenTypedMessageRelaysToCustomer(t *testing.T) {
 		Channel: core.ChannelTelegram, ReplyTo: "777", UserName: "Aung", Question: "do you deliver?",
 	}}
 	client := &fakePanelClient{}
-	h := panelHandler(sub, s, client)
+	del := &fakePanelDeliverer{}
+	panel := NewAdminPanel(s, client, del, nil, "", 1, discardLogger())
+	h := NewHandler(sub, nil, nil, panel, nil, 1, "", discardLogger())
 
 	// Tap ✍️ Reply on item #4.
 	post(h, `{"callback_query":{"id":"cb1","data":"a:r:4","from":{"id":9},"message":{"message_id":7,"chat":{"id":5}}}}`)
@@ -118,21 +132,37 @@ func TestPanel_TapReplyThenTypedMessageRelaysToCustomer(t *testing.T) {
 		t.Errorf("expected reply prompt, got %q", client.editedText)
 	}
 
-	// Admin types the answer; it must go to the customer, not the AI.
+	// Admin types the answer; it must go to the customer via the deliverer, not the AI.
 	s.pendingReply, s.hasPending = 4, true
 	post(h, `{"message":{"text":"Yes, weekdays 9-6","chat":{"id":5},"from":{"id":9}}}`)
 
 	if sub.called {
 		t.Error("reply text must not reach the AI/submitter")
 	}
-	if len(client.sentTo) < 2 || client.sentTo[0] != 777 || client.sentMsgs[0] != "Yes, weekdays 9-6" {
-		t.Fatalf("reply not relayed to customer: to=%v msgs=%v", client.sentTo, client.sentMsgs)
+	if !del.called || del.channel != core.ChannelTelegram || del.replyTo != "777" || del.text != "Yes, weekdays 9-6" {
+		t.Fatalf("reply not delivered correctly: %+v", del)
 	}
-	if !strings.Contains(client.sentMsgs[1], "Sent to Aung") {
-		t.Errorf("expected confirmation, got %q", client.sentMsgs[1])
+	if len(client.sentMsgs) == 0 || !strings.Contains(client.sentMsgs[0], "Sent to Aung") {
+		t.Errorf("expected admin confirmation, got %v", client.sentMsgs)
 	}
 	if !s.resolved || !s.cleared {
 		t.Errorf("item should be resolved and state cleared: %+v", s)
+	}
+}
+
+func TestPanel_ReplyToWebQuestionRoutesToWeb(t *testing.T) {
+	// A web-channel question answered from the Telegram panel must route to web.
+	s := &fakeAdminStore{admin: true, hasPending: true, pendingReply: 8,
+		target: store.UnansweredTarget{Channel: core.ChannelWidget, ReplyTo: "session-xyz", Question: "hours?"}}
+	client := &fakePanelClient{}
+	del := &fakePanelDeliverer{}
+	panel := NewAdminPanel(s, client, del, nil, "", 1, discardLogger())
+	h := NewHandler(&fakeSubmitter{}, nil, nil, panel, nil, 1, "", discardLogger())
+
+	post(h, `{"message":{"text":"We are open 9-6.","chat":{"id":5},"from":{"id":9}}}`)
+
+	if !del.called || del.channel != core.ChannelWidget || del.replyTo != "session-xyz" {
+		t.Fatalf("web reply not routed to web: %+v", del)
 	}
 }
 
@@ -155,7 +185,7 @@ func TestPanel_ForgedCallbackFromNonAdminIgnored(t *testing.T) {
 func TestPanel_AdminGreetingShowsPanelButton(t *testing.T) {
 	sub := &fakeSubmitter{}
 	client := &fakePanelClient{}
-	panel := NewAdminPanel(&fakeAdminStore{admin: true}, client, nil, "", 1, discardLogger())
+	panel := NewAdminPanel(&fakeAdminStore{admin: true}, client, &fakePanelDeliverer{}, nil, "", 1, discardLogger())
 	h := NewHandler(sub, fakeMenuStore{}, client, panel, nil, 1, "", discardLogger())
 
 	post(h, `{"message":{"text":"hi","chat":{"id":5},"from":{"id":9}}}`)
@@ -169,7 +199,7 @@ func TestPanel_AdminGreetingShowsPanelButton(t *testing.T) {
 func TestPanel_CustomerGreetingHasNoPanelButton(t *testing.T) {
 	sub := &fakeSubmitter{}
 	client := &fakePanelClient{}
-	panel := NewAdminPanel(&fakeAdminStore{admin: false}, client, nil, "", 1, discardLogger())
+	panel := NewAdminPanel(&fakeAdminStore{admin: false}, client, &fakePanelDeliverer{}, nil, "", 1, discardLogger())
 	h := NewHandler(sub, fakeMenuStore{}, client, panel, nil, 1, "", discardLogger())
 
 	post(h, `{"message":{"text":"hi","chat":{"id":5},"from":{"id":9}}}`)

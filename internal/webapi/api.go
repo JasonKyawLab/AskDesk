@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/JasonKyawLab/AskDesk/internal/core"
@@ -34,11 +35,17 @@ type BusinessStore interface {
 	Settings(ctx context.Context, businessID int64) (store.BusinessSettings, error)
 }
 
+// ReplyStore returns admin replies waiting for a web customer to poll.
+type ReplyStore interface {
+	Since(ctx context.Context, businessID int64, sessionID string, sinceID int64) ([]store.WebReply, error)
+}
+
 // Handler serves the /api/v1 endpoints.
 type Handler struct {
 	engine  Engine
 	faqs    FAQStore
 	biz     BusinessStore
+	replies ReplyStore
 	origins []string // CORS allowlist; "*" allows any origin
 	log     *slog.Logger
 	mux     *http.ServeMux
@@ -46,11 +53,12 @@ type Handler struct {
 
 // New builds the API handler. allowedOrigins is the CORS allowlist (["*"] allows
 // any origin — fine here since auth is a header API key, not a cookie).
-func New(engine Engine, faqs FAQStore, biz BusinessStore, allowedOrigins []string, log *slog.Logger) *Handler {
-	h := &Handler{engine: engine, faqs: faqs, biz: biz, origins: allowedOrigins, log: log, mux: http.NewServeMux()}
+func New(engine Engine, faqs FAQStore, biz BusinessStore, replies ReplyStore, allowedOrigins []string, log *slog.Logger) *Handler {
+	h := &Handler{engine: engine, faqs: faqs, biz: biz, replies: replies, origins: allowedOrigins, log: log, mux: http.NewServeMux()}
 	h.mux.HandleFunc("GET /api/v1/config", h.handleConfig)
 	h.mux.HandleFunc("GET /api/v1/faqs", h.handleFAQs)
 	h.mux.HandleFunc("POST /api/v1/ask", h.handleAsk)
+	h.mux.HandleFunc("GET /api/v1/replies", h.handleReplies)
 	return h
 }
 
@@ -175,6 +183,30 @@ func (h *Handler) handleAsk(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, askResponse{Answer: reply.Text, Answered: reply.Answered})
+}
+
+// handleReplies lets a web widget poll for admin replies to its session. The
+// client passes ?since=<lastId> and advances it, so polling is idempotent.
+func (h *Handler) handleReplies(w http.ResponseWriter, r *http.Request) {
+	session := strings.TrimSpace(r.URL.Query().Get("session_id"))
+	if session == "" {
+		writeError(w, http.StatusBadRequest, "session_id is required")
+		return
+	}
+	var since int64
+	if v := r.URL.Query().Get("since"); v != "" {
+		since, _ = strconv.ParseInt(v, 10, 64)
+	}
+
+	replies, err := h.replies.Since(r.Context(), businessID(r.Context()), session, since)
+	if err != nil {
+		h.serverError(w, "web replies", err)
+		return
+	}
+	if replies == nil {
+		replies = []store.WebReply{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"replies": replies})
 }
 
 // --- helpers ---

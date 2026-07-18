@@ -32,7 +32,27 @@ const pageTemplate = `<!doctype html>
 </style>
 </head>
 <body>
-  <h1>FAQ editor</h1>
+  <h1>Support admin</h1>
+
+  <h2>📥 Pending questions</h2>
+  {{if not .Pending}}<p class="empty">No pending questions. 🎉</p>{{end}}
+  {{range .Pending}}
+    <div class="faq">
+      <div class="q">#{{.ID}} — {{if .UserName}}{{.UserName}}{{else}}customer{{end}}</div>
+      <div class="a">{{.Question}}</div>
+      <form method="post" action="/edit/reply">
+        <input type="hidden" name="id" value="{{.ID}}">
+        <label>Your reply
+          <textarea name="message" required></textarea>
+        </label>
+        <button class="primary" type="submit">Send reply</button>
+      </form>
+      <form method="post" action="/edit/dismiss" onsubmit="return confirm('Dismiss without replying?')">
+        <input type="hidden" name="id" value="{{.ID}}">
+        <button class="del" type="submit">Dismiss</button>
+      </form>
+    </div>
+  {{end}}
 
   <h2>Business settings</h2>
   <form method="post" action="/edit/settings">

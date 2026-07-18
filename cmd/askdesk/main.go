@@ -71,8 +71,9 @@ func run() error {
 		faqStore := store.NewFAQs(pool, embedder)
 		bizStore := store.NewBusinesses(pool)
 		adminStore := store.NewAdmins(pool)
+		webReplies := store.NewWebReplies(pool)
 		engine := core.NewEngine(faqStore, genProvider, store.NewConversations(pool), bizStore, log)
-		deliverer := app.NewChannelDeliverer(cfg)
+		deliverer := app.NewChannelDeliverer(cfg, webReplies)
 
 		var signer *auth.Signer
 		if cfg.MagicLinkSecret != "" {
@@ -80,7 +81,7 @@ func run() error {
 		}
 
 		// Web API (JSON channel) — available whenever the database is present.
-		srv.Mount("/api/v1/", webapi.New(engine, faqStore, bizStore, cfg.CORSOrigins, log))
+		srv.Mount("/api/v1/", webapi.New(engine, faqStore, bizStore, webReplies, cfg.CORSOrigins, log))
 		log.Info("web api enabled")
 
 		// Telegram channel.
@@ -90,7 +91,7 @@ func run() error {
 				clientOpts = append(clientOpts, telegram.WithBaseURL(cfg.TelegramAPIURL))
 			}
 			client := telegram.NewClient(cfg.TelegramBotToken, clientOpts...)
-			panel := telegram.NewAdminPanel(adminStore, client, signer, cfg.PublicURL, cfg.BusinessID, log)
+			panel := telegram.NewAdminPanel(adminStore, client, deliverer, signer, cfg.PublicURL, cfg.BusinessID, log)
 
 			// Submitter: run inline (all-in-one) or enqueue to the worker (queue mode).
 			var submitter telegram.Submitter
@@ -117,15 +118,17 @@ func run() error {
 			}
 		}
 
-		// Magic-link FAQ + settings editor.
+		// Magic-link web admin: FAQs, settings, and pending-question handoff.
 		if cfg.MagicLinkSecret != "" {
-			ed := editor.NewHandler(faqStore, bizStore, signer,
+			ed := editor.NewHandler(faqStore, bizStore, adminStore, deliverer, signer,
 				cfg.IsProduction() || strings.HasPrefix(cfg.PublicURL, "https"), log)
 			srv.Mount("GET /edit", http.HandlerFunc(ed.HandleEdit))
 			srv.Mount("POST /edit/faqs", http.HandlerFunc(ed.HandleCreate))
 			srv.Mount("POST /edit/faqs/delete", http.HandlerFunc(ed.HandleDelete))
 			srv.Mount("POST /edit/settings", http.HandlerFunc(ed.HandleSettings))
-			log.Info("faq editor enabled")
+			srv.Mount("POST /edit/reply", http.HandlerFunc(ed.HandleReply))
+			srv.Mount("POST /edit/dismiss", http.HandlerFunc(ed.HandleDismiss))
+			log.Info("web admin (editor + handoff) enabled")
 		}
 	} else if cfg.TelegramBotToken != "" && cfg.RedisURL != "" {
 		// Thin web tier without a database: enqueue only; the worker runs the engine.

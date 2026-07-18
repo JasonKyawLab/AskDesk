@@ -22,6 +22,11 @@ delete-webhook:
 load-faqs:
 	go run ./cmd/loadfaqs -file $(file) $(if $(reset),-reset,)
 
+# Print a magic link to the web admin page (for web-only operators, no Telegram).
+# Requires ASKDESK_MAGIC_LINK_SECRET (and ideally ASKDESK_PUBLIC_URL).
+admin-link:
+	@go run ./cmd/adminlink
+
 # Build the container image locally.
 docker-build:
 	docker build -t askdesk:local .

@@ -40,8 +40,14 @@ func (fakeBiz) Settings(context.Context, int64) (store.BusinessSettings, error) 
 	return store.BusinessSettings{DisplayName: "MiniPOS", WelcomeMessage: "hi", AskPrompt: "ask"}, nil
 }
 
+type fakeReplies struct{ list []store.WebReply }
+
+func (f fakeReplies) Since(context.Context, int64, string, int64) ([]store.WebReply, error) {
+	return f.list, nil
+}
+
 func newAPI(engine Engine, faqs FAQStore) *Handler {
-	return New(engine, faqs, fakeBiz{valid: "goodkey"}, []string{"*"},
+	return New(engine, faqs, fakeBiz{valid: "goodkey"}, fakeReplies{}, []string{"*"},
 		slog.New(slog.NewTextHandler(io.Discard, nil)))
 }
 
@@ -123,6 +129,27 @@ func TestAPI_AskEmptyMessage(t *testing.T) {
 	rec := do(newAPI(fakeEngine{}, fakeFAQs{}), http.MethodPost, "/api/v1/ask", "goodkey", `{"message":"  "}`)
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("status = %d, want 400", rec.Code)
+	}
+}
+
+func TestAPI_Replies(t *testing.T) {
+	h := New(fakeEngine{}, fakeFAQs{}, fakeBiz{valid: "goodkey"},
+		fakeReplies{list: []store.WebReply{{ID: 3, Message: "Yes, we deliver."}}},
+		[]string{"*"}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	rec := do(h, http.MethodGet, "/api/v1/replies?session_id=s1&since=0", "goodkey", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "Yes, we deliver.") {
+		t.Errorf("expected reply in body, got %s", rec.Body.String())
+	}
+}
+
+func TestAPI_RepliesRequiresSession(t *testing.T) {
+	rec := do(newAPI(fakeEngine{}, fakeFAQs{}), http.MethodGet, "/api/v1/replies", "goodkey", "")
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400 without session_id", rec.Code)
 	}
 }
 

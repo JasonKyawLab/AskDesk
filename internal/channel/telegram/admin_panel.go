@@ -31,12 +31,19 @@ type PanelClient interface {
 	SendMessage(ctx context.Context, chatID int64, text string) error
 }
 
+// Deliverer sends an admin's reply to the customer on their originating channel
+// (Telegram chat or web poll). It makes tap-to-reply work across channels.
+type Deliverer interface {
+	Deliver(ctx context.Context, channel core.Channel, replyTo, text string) error
+}
+
 // AdminPanel is the button-driven admin UI: /admin opens it; stats, pending
 // questions, tap-to-reply, dismiss, and the FAQ editor link are all buttons.
 // Every action re-verifies the tapper's admin identity.
 type AdminPanel struct {
 	store      AdminStore
 	client     PanelClient
+	deliverer  Deliverer
 	signer     *auth.Signer // nil hides the Edit FAQs button
 	baseURL    string
 	businessID int64
@@ -44,8 +51,8 @@ type AdminPanel struct {
 }
 
 // NewAdminPanel constructs the panel. signer/baseURL may be empty.
-func NewAdminPanel(s AdminStore, client PanelClient, signer *auth.Signer, baseURL string, businessID int64, log *slog.Logger) *AdminPanel {
-	return &AdminPanel{store: s, client: client, signer: signer, baseURL: baseURL, businessID: businessID, log: log}
+func NewAdminPanel(s AdminStore, client PanelClient, deliverer Deliverer, signer *auth.Signer, baseURL string, businessID int64, log *slog.Logger) *AdminPanel {
+	return &AdminPanel{store: s, client: client, deliverer: deliverer, signer: signer, baseURL: baseURL, businessID: businessID, log: log}
 }
 
 // Admin callback data: "a" panel, "a:s" stats, "a:p" pending list,
@@ -141,12 +148,8 @@ func (p *AdminPanel) InterceptReply(ctx context.Context, fromID, chatID int64, t
 		return true
 	}
 
-	customerChat, err := strconv.ParseInt(target.ReplyTo, 10, 64)
-	if err != nil {
-		p.log.Error("admin panel: bad reply target", "error", err, "reply_to", target.ReplyTo)
-		return true
-	}
-	if err := p.client.SendMessage(ctx, customerChat, text); err != nil {
+	// Route to the customer's own channel (Telegram chat or web poll).
+	if err := p.deliverer.Deliver(ctx, target.Channel, target.ReplyTo, text); err != nil {
 		p.log.Error("admin panel: deliver reply failed", "error", err)
 		p.send(ctx, chatID, "Couldn't deliver the reply — please try again.")
 		return true

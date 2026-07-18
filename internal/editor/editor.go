@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/JasonKyawLab/AskDesk/internal/auth"
+	"github.com/JasonKyawLab/AskDesk/internal/core"
 	"github.com/JasonKyawLab/AskDesk/internal/store"
 )
 
@@ -35,32 +36,49 @@ type SettingsStore interface {
 	UpdateSettings(ctx context.Context, businessID int64, s store.BusinessSettings) error
 }
 
+// AdminStore is the pending-question access the editor's handoff section needs.
+type AdminStore interface {
+	PendingUnanswered(ctx context.Context, businessID int64, limit int) ([]store.PendingQuestion, error)
+	GetUnanswered(ctx context.Context, businessID, id int64) (store.UnansweredTarget, error)
+	ResolveUnanswered(ctx context.Context, businessID, id int64) error
+}
+
+// Deliverer sends an admin reply to the customer on their originating channel.
+type Deliverer interface {
+	Deliver(ctx context.Context, channel core.Channel, replyTo, text string) error
+}
+
 // Handler serves the editor endpoints.
 type Handler struct {
-	faqs     FAQStore
-	settings SettingsStore
-	signer   *auth.Signer
-	secure   bool // set Secure on the session cookie (HTTPS deployments)
-	log      *slog.Logger
-	tmpl     *template.Template
+	faqs      FAQStore
+	settings  SettingsStore
+	admin     AdminStore
+	deliverer Deliverer
+	signer    *auth.Signer
+	secure    bool // set Secure on the session cookie (HTTPS deployments)
+	log       *slog.Logger
+	tmpl      *template.Template
 }
 
 // NewHandler builds the editor handler. secure should be true in production so
 // the session cookie is only sent over HTTPS.
-func NewHandler(faqs FAQStore, settings SettingsStore, signer *auth.Signer, secure bool, log *slog.Logger) *Handler {
+func NewHandler(faqs FAQStore, settings SettingsStore, admin AdminStore, deliverer Deliverer, signer *auth.Signer, secure bool, log *slog.Logger) *Handler {
 	return &Handler{
-		faqs:     faqs,
-		settings: settings,
-		signer:   signer,
-		secure:   secure,
-		log:      log,
-		tmpl:     template.Must(template.New("page").Parse(pageTemplate)),
+		faqs:      faqs,
+		settings:  settings,
+		admin:     admin,
+		deliverer: deliverer,
+		signer:    signer,
+		secure:    secure,
+		log:       log,
+		tmpl:      template.Must(template.New("page").Parse(pageTemplate)),
 	}
 }
 
 // pageData is the editor page model.
 type pageData struct {
 	Settings store.BusinessSettings
+	Pending  []store.PendingQuestion
 	FAQs     []store.FAQ
 }
 
@@ -94,7 +112,58 @@ func (h *Handler) HandleEdit(w http.ResponseWriter, r *http.Request) {
 		h.serverError(w, "load settings", err)
 		return
 	}
-	h.render(w, pageData{Settings: settings, FAQs: faqs})
+	pending, err := h.admin.PendingUnanswered(r.Context(), claims.BusinessID, 20)
+	if err != nil {
+		h.serverError(w, "load pending", err)
+		return
+	}
+	h.render(w, pageData{Settings: settings, Pending: pending, FAQs: faqs})
+}
+
+// HandleReply relays an admin's answer to a pending question's customer (any
+// channel) and resolves the item.
+func (h *Handler) HandleReply(w http.ResponseWriter, r *http.Request) {
+	claims, ok := h.requireSession(w, r)
+	if !ok {
+		return
+	}
+	id, err := strconv.ParseInt(r.FormValue("id"), 10, 64)
+	message := strings.TrimSpace(r.FormValue("message"))
+	if err != nil || message == "" {
+		http.Redirect(w, r, "/edit", http.StatusSeeOther)
+		return
+	}
+	target, err := h.admin.GetUnanswered(r.Context(), claims.BusinessID, id)
+	if err != nil {
+		http.Redirect(w, r, "/edit", http.StatusSeeOther) // already answered
+		return
+	}
+	if err := h.deliverer.Deliver(r.Context(), target.Channel, target.ReplyTo, message); err != nil {
+		h.serverError(w, "deliver reply", err)
+		return
+	}
+	if err := h.admin.ResolveUnanswered(r.Context(), claims.BusinessID, id); err != nil {
+		h.log.Error("editor: resolve failed", "error", err)
+	}
+	http.Redirect(w, r, "/edit", http.StatusSeeOther)
+}
+
+// HandleDismiss resolves a pending question without replying.
+func (h *Handler) HandleDismiss(w http.ResponseWriter, r *http.Request) {
+	claims, ok := h.requireSession(w, r)
+	if !ok {
+		return
+	}
+	id, err := strconv.ParseInt(r.FormValue("id"), 10, 64)
+	if err != nil {
+		http.Redirect(w, r, "/edit", http.StatusSeeOther)
+		return
+	}
+	if err := h.admin.ResolveUnanswered(r.Context(), claims.BusinessID, id); err != nil {
+		h.serverError(w, "dismiss", err)
+		return
+	}
+	http.Redirect(w, r, "/edit", http.StatusSeeOther)
 }
 
 // HandleSettings saves the business settings (name and messages).
