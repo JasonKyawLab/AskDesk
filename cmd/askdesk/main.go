@@ -81,7 +81,10 @@ func run() error {
 		}
 
 		// Web API (JSON channel) — available whenever the database is present.
+		// Public (customer) endpoints under /api/v1, admin endpoints under
+		// /api/v1/admin (separate X-Admin-Key, no CORS — backend only).
 		srv.Mount("/api/v1/", webapi.New(engine, faqStore, bizStore, webReplies, cfg.CORSOrigins, log))
+		srv.Mount("/api/v1/admin/", webapi.NewAdmin(adminStore, deliverer, bizStore, log))
 		log.Info("web api enabled")
 
 		// Telegram channel.

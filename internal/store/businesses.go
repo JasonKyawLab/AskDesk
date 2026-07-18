@@ -54,16 +54,26 @@ func NewBusinesses(pool *pgxpool.Pool) *Businesses {
 
 // IDByAPIKey resolves a public API key to its business id (for the web API).
 func (b *Businesses) IDByAPIKey(ctx context.Context, apiKey string) (int64, error) {
-	if strings.TrimSpace(apiKey) == "" {
+	return b.idByKey(ctx, "api_key", apiKey)
+}
+
+// IDByAdminKey resolves a privileged admin API key to its business id.
+func (b *Businesses) IDByAdminKey(ctx context.Context, adminKey string) (int64, error) {
+	return b.idByKey(ctx, "admin_api_key", adminKey)
+}
+
+func (b *Businesses) idByKey(ctx context.Context, column, key string) (int64, error) {
+	if strings.TrimSpace(key) == "" {
 		return 0, ErrUnknownAPIKey
 	}
 	var id int64
-	err := b.pool.QueryRow(ctx, "SELECT id FROM businesses WHERE api_key = $1", apiKey).Scan(&id)
+	// column is a fixed literal (never user input), so this is not injectable.
+	err := b.pool.QueryRow(ctx, "SELECT id FROM businesses WHERE "+column+" = $1", key).Scan(&id)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return 0, ErrUnknownAPIKey
 	}
 	if err != nil {
-		return 0, fmt.Errorf("business by api key: %w", err)
+		return 0, fmt.Errorf("business by %s: %w", column, err)
 	}
 	return id, nil
 }
