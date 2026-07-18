@@ -105,7 +105,7 @@ func (s *Service) unanswered(ctx context.Context, businessID int64) (string, boo
 		if name == "" {
 			name = "customer"
 		}
-		fmt.Fprintf(&b, "#%d — %s · %s: %s\n", it.ID, name, it.Ago(), it.Question)
+		fmt.Fprintf(&b, "#%d — %s via %s · %s: %s\n", it.ID, name, it.Channel.Label(), it.Ago(), it.Question)
 	}
 	b.WriteString("\nReply with:  /reply <id> <your message>")
 	return b.String(), true, nil

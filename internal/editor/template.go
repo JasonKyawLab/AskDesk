@@ -38,7 +38,7 @@ const pageTemplate = `<!doctype html>
   {{if not .Pending}}<p class="empty">No pending questions. 🎉</p>{{end}}
   {{range .Pending}}
     <div class="faq">
-      <div class="q">#{{.ID}} — {{if .UserName}}{{.UserName}}{{else}}customer{{end}} <span class="cat">{{.Ago}}</span></div>
+      <div class="q">#{{.ID}} — {{if .UserName}}{{.UserName}}{{else}}customer{{end}} <span class="cat">{{.Channel.Label}}</span> <span class="cat">{{.Ago}}</span></div>
       <div class="a">{{.Question}}</div>
       <form method="post" action="/edit/reply">
         <input type="hidden" name="id" value="{{.ID}}">

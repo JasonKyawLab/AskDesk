@@ -82,6 +82,7 @@ type PendingQuestion struct {
 	ID        int64
 	Question  string
 	UserName  string // customer display name, may be empty
+	Channel   core.Channel
 	CreatedAt time.Time
 }
 
@@ -91,7 +92,7 @@ func (p PendingQuestion) Ago() string { return ago(p.CreatedAt) }
 // PendingUnanswered returns up to limit pending questions for a business.
 func (a *Admins) PendingUnanswered(ctx context.Context, businessID int64, limit int) ([]PendingQuestion, error) {
 	const q = `
-		SELECT u.id, u.question, coalesce(c.external_user_name, ''), c.created_at
+		SELECT u.id, u.question, coalesce(c.external_user_name, ''), c.channel, c.created_at
 		FROM unanswered_queue u
 		JOIN conversations c ON c.id = u.conversation_id
 		WHERE c.business_id = $1 AND u.status = 'pending'
@@ -107,9 +108,11 @@ func (a *Admins) PendingUnanswered(ctx context.Context, businessID int64, limit 
 	var out []PendingQuestion
 	for rows.Next() {
 		var p PendingQuestion
-		if err := rows.Scan(&p.ID, &p.Question, &p.UserName, &p.CreatedAt); err != nil {
+		var channel string
+		if err := rows.Scan(&p.ID, &p.Question, &p.UserName, &channel, &p.CreatedAt); err != nil {
 			return nil, fmt.Errorf("scan pending: %w", err)
 		}
+		p.Channel = core.Channel(channel)
 		out = append(out, p)
 	}
 	return out, rows.Err()

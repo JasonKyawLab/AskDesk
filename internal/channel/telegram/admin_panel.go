@@ -204,7 +204,7 @@ func (p *AdminPanel) pendingScreen(ctx context.Context) (string, Keyboard, error
 		if name == "" {
 			name = "customer"
 		}
-		label := truncLabel(fmt.Sprintf("#%d %s · %s: %s", it.ID, name, it.Ago(), it.Question))
+		label := truncLabel(fmt.Sprintf("%s #%d %s · %s: %s", channelIcon(it.Channel), it.ID, name, it.Ago(), it.Question))
 		kb = append(kb, []Button{{Text: label, Data: "a:q:" + strconv.FormatInt(it.ID, 10)}})
 	}
 	kb = append(kb, backRow()...)
@@ -226,7 +226,8 @@ func (p *AdminPanel) detailScreen(ctx context.Context, idStr string) (string, Ke
 	if name == "" {
 		name = "customer"
 	}
-	text := fmt.Sprintf("📨 #%d — from %s · %s:\n\n%s", id, name, t.Ago(), t.Question)
+	text := fmt.Sprintf("📨 #%d — from %s via %s %s · %s:\n\n%s",
+		id, name, channelIcon(t.Channel), t.Channel.Label(), t.Ago(), t.Question)
 	kb := Keyboard{
 		{{Text: "✍️ Reply", Data: "a:r:" + idStr}, {Text: "🗑 Dismiss", Data: "a:d:" + idStr}},
 		{{Text: "⬅️ Pending", Data: cbPending}},
@@ -277,6 +278,18 @@ func (p *AdminPanel) editScreen(adminID string) (string, Keyboard) {
 
 func backRow() Keyboard {
 	return Keyboard{{{Text: "⬅️ Admin panel", Data: cbPanel}}}
+}
+
+// channelIcon is a compact channel indicator for the pending list.
+func channelIcon(ch core.Channel) string {
+	switch ch {
+	case core.ChannelTelegram:
+		return "📱"
+	case core.ChannelWidget:
+		return "🌐"
+	default:
+		return "•"
+	}
 }
 
 func (p *AdminPanel) isAdmin(ctx context.Context, fromID int64) bool {

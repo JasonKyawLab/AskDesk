@@ -13,6 +13,22 @@ const (
 	ChannelWidget    Channel = "widget"
 )
 
+// Label is a human-readable channel name for admin views.
+func (c Channel) Label() string {
+	switch c {
+	case ChannelTelegram:
+		return "Telegram"
+	case ChannelWhatsApp:
+		return "WhatsApp"
+	case ChannelMessenger:
+		return "Messenger"
+	case ChannelWidget:
+		return "Web"
+	default:
+		return string(c)
+	}
+}
+
 // Message is a normalized inbound customer message. Every channel produces this
 // same shape: { businessID, channel, userID, text }.
 type Message struct {

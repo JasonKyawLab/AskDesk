@@ -78,6 +78,7 @@ type pendingItem struct {
 	ID        int64  `json:"id"`
 	Question  string `json:"question"`
 	Customer  string `json:"customer"`
+	Channel   string `json:"channel"`    // "telegram" | "widget" | ...
 	CreatedAt string `json:"created_at"` // RFC3339 UTC; "" if unknown
 }
 
@@ -93,7 +94,7 @@ func (h *AdminHandler) handlePending(w http.ResponseWriter, r *http.Request) {
 		if !it.CreatedAt.IsZero() {
 			created = it.CreatedAt.UTC().Format(time.RFC3339)
 		}
-		out = append(out, pendingItem{ID: it.ID, Question: it.Question, Customer: it.UserName, CreatedAt: created})
+		out = append(out, pendingItem{ID: it.ID, Question: it.Question, Customer: it.UserName, Channel: string(it.Channel), CreatedAt: created})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"pending": out})
 }
