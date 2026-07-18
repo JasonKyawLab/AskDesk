@@ -22,7 +22,9 @@ You don't have to run both channels. They're independent, driven by config:
 
 The Web API is available whenever a database is configured; Telegram turns on
 only when a bot token is set. Everything below applies to whichever you pick —
-just skip the Telegram steps if you're web-only.
+web-only setups skip the Telegram steps and manage FAQs, settings, and the
+pending-question queue through `make admin-link` instead (see the Web API
+section).
 
 ---
 
@@ -141,9 +143,24 @@ The JSON API is available on any deployment (no Telegram required). Base URL
 | `GET /api/v1/config` | shop name, welcome, ask prompt, categories |
 | `GET /api/v1/faqs` | categories with `{id, question, answer}` |
 | `POST /api/v1/ask` | body `{message, session_id}` → `{answer, answered}` |
+| `GET /api/v1/replies?session_id=&since=` | admin replies for that session (poll it) |
+
+Pass a stable random `session_id` from your frontend (or omit it → `anon`). It's
+just a grouping key — no personal data required.
 
 CORS: set `ASKDESK_CORS_ORIGINS` to your site (or `*`). Only needed for direct
 browser calls.
+
+### Answering web customers (handoff)
+When the AI can't answer a web question, it's queued like any other. Reply to it
+from **either** admin surface — both route the answer back to the web visitor,
+who receives it by polling `/api/v1/replies`:
+
+- **Telegram** (if set up): `/admin` → 📥 Pending → tap → ✍️ Reply.
+- **Web only** (no Telegram): run `make admin-link` (needs
+  `ASKDESK_MAGIC_LINK_SECRET` + `ASKDESK_PUBLIC_URL`) to print a magic link →
+  open it → the page lists pending questions with a reply box, plus FAQ and
+  settings editing.
 
 **Security:** the API is read-only and tenant-isolated — a key only reads its own
 business's public FAQs, and nothing can be written through it. The one caveat:

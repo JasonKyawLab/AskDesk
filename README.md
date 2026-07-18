@@ -20,9 +20,10 @@ self-hosting are the cost advantage, not an afterthought.
   engine, FAQs, and admin tools.
 - **Buttons + AI** — customers tap *category → question* for instant answers
   (zero AI cost); free-typed questions go to RAG + AI.
-- **Human handoff** — when the AI is unsure, the question is queued and the admin
-  gets a button panel (`/admin`): view pending questions and **tap-to-reply** —
-  the bot relays your answer straight to the customer.
+- **Cross-channel handoff** — unsure questions land in one shared inbox. Answer
+  from the Telegram `/admin` panel **or** a web admin page; the reply is routed
+  back to the customer's own channel (their Telegram chat, or their web widget
+  which polls for it). A web-only operator never needs Telegram.
 - **Provider failover** — a cost-ordered AI chain with a circuit breaker; falls
   over to the next provider on quota limits or outages.
 - **Runtime config** — shop name, welcome/fallback messages, and FAQs are edited
@@ -81,8 +82,14 @@ secret token.
 | `GET /api/v1/config` | shop name, welcome text, categories |
 | `GET /api/v1/faqs` | categories with questions + answers |
 | `POST /api/v1/ask` | `{ answer, answered }` (free text → AI) |
+| `GET /api/v1/replies` | admin replies for a session (widget polls this) |
 
 Read-only and tenant-isolated; an empty knowledge base returns empty JSON.
+
+**Web admin** — the same signed magic-link page (opened via `/admin` in Telegram
+or `make admin-link` without it) edits FAQs and settings **and** shows pending
+questions to answer. So Telegram, web, or both work for admins and customers
+alike — sharing one database and knowledge base.
 
 ---
 
