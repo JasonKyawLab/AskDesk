@@ -86,10 +86,23 @@ secret token.
 
 Read-only and tenant-isolated; an empty knowledge base returns empty JSON.
 
-**Web admin** — the same signed magic-link page (opened via `/admin` in Telegram
-or `make admin-link` without it) edits FAQs and settings **and** shows pending
-questions to answer. So Telegram, web, or both work for admins and customers
-alike — sharing one database and knowledge base.
+**Admin JSON API** — `/api/v1/admin`, a **separate** `X-Admin-Key` header
+(backend-to-backend, no CORS), so a frontend can build its own support inbox:
+
+| Endpoint | |
+|---|---|
+| `GET /api/v1/admin/stats` | today's counts |
+| `GET /api/v1/admin/pending` | unanswered questions |
+| `POST /api/v1/admin/reply` | `{id, message}` → routed to the customer's channel |
+| `POST /api/v1/admin/dismiss` | `{id}` → resolve without replying |
+
+The privileged admin key is stored apart from the public one, so a customer key
+can never reply or dismiss.
+
+**Web admin (built-in)** — alternatively, the signed magic-link page (opened via
+`/admin` in Telegram, or `make admin-link` without it) edits FAQs and settings
+**and** lists pending questions to answer. So Telegram, the built-in web page, or
+your own admin UI all work — sharing one database and knowledge base.
 
 ---
 

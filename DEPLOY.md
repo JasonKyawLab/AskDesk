@@ -153,14 +153,32 @@ browser calls.
 
 ### Answering web customers (handoff)
 When the AI can't answer a web question, it's queued like any other. Reply to it
-from **either** admin surface — both route the answer back to the web visitor,
-who receives it by polling `/api/v1/replies`:
+from **any** admin surface — all route the answer back to the web visitor, who
+receives it by polling `/api/v1/replies`:
 
 - **Telegram** (if set up): `/admin` → 📥 Pending → tap → ✍️ Reply.
-- **Web only** (no Telegram): run `make admin-link` (needs
-  `ASKDESK_MAGIC_LINK_SECRET` + `ASKDESK_PUBLIC_URL`) to print a magic link →
-  open it → the page lists pending questions with a reply box, plus FAQ and
-  settings editing.
+- **Built-in web page** (no Telegram): run `make admin-link` (needs
+  `ASKDESK_MAGIC_LINK_SECRET` + `ASKDESK_PUBLIC_URL`) → open the link → pending
+  questions with a reply box, plus FAQ/settings editing.
+- **Your own admin UI** (build it into your app): the admin JSON API below.
+
+### Admin API — build your own support inbox
+
+For answering from inside your own app, call the privileged admin API. It uses a
+**separate** `X-Admin-Key` header (find it with `SELECT admin_api_key FROM
+businesses WHERE id = 1;`) and sends **no CORS headers** — call it **from your
+backend**, never a browser (the admin key must stay server-side).
+
+| Endpoint | |
+|---|---|
+| `GET /api/v1/admin/stats` | `{total, answered, unanswered}` |
+| `GET /api/v1/admin/pending` | `{pending: [{id, question, customer}]}` |
+| `POST /api/v1/admin/reply` | body `{id, message}` → delivers to the customer's channel, resolves |
+| `POST /api/v1/admin/dismiss` | body `{id}` → resolve without replying |
+
+The public `api_key` is rejected here — only the `admin_api_key` works. Rotate
+either key with `UPDATE businesses SET admin_api_key = gen_random_uuid()::text
+WHERE id = 1;`.
 
 **Security:** the API is read-only and tenant-isolated — a key only reads its own
 business's public FAQs, and nothing can be written through it. The one caveat:
