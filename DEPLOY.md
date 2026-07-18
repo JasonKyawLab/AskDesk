@@ -172,7 +172,7 @@ backend**, never a browser (the admin key must stay server-side).
 | Endpoint | |
 |---|---|
 | `GET /api/v1/admin/stats` | `{total, answered, unanswered}` |
-| `GET /api/v1/admin/pending` | `{pending: [{id, question, customer}]}` |
+| `GET /api/v1/admin/pending` | `{pending: [{id, question, customer, created_at}]}` |
 | `POST /api/v1/admin/reply` | body `{id, message}` → delivers to the customer's channel, resolves |
 | `POST /api/v1/admin/dismiss` | body `{id}` → resolve without replying |
 

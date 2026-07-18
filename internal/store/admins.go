@@ -4,12 +4,30 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/JasonKyawLab/AskDesk/internal/core"
 )
+
+// ago renders a timestamp as a short relative string, e.g. "2h ago".
+func ago(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	switch d := time.Since(t); {
+	case d < time.Minute:
+		return "just now"
+	case d < time.Hour:
+		return fmt.Sprintf("%dm ago", int(d.Minutes()))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%dh ago", int(d.Hours()))
+	default:
+		return fmt.Sprintf("%dd ago", int(d.Hours()/24))
+	}
+}
 
 // Admins provides admin identity checks and the read-only stats/queue queries
 // behind the in-chat admin commands.
@@ -61,15 +79,19 @@ func (a *Admins) TodayStats(ctx context.Context, businessID int64) (DailyStats, 
 
 // PendingQuestion is one unanswered item awaiting an admin.
 type PendingQuestion struct {
-	ID       int64
-	Question string
-	UserName string // customer display name, may be empty
+	ID        int64
+	Question  string
+	UserName  string // customer display name, may be empty
+	CreatedAt time.Time
 }
+
+// Ago is the time since the question arrived, e.g. "2h ago".
+func (p PendingQuestion) Ago() string { return ago(p.CreatedAt) }
 
 // PendingUnanswered returns up to limit pending questions for a business.
 func (a *Admins) PendingUnanswered(ctx context.Context, businessID int64, limit int) ([]PendingQuestion, error) {
 	const q = `
-		SELECT u.id, u.question, coalesce(c.external_user_name, '')
+		SELECT u.id, u.question, coalesce(c.external_user_name, ''), c.created_at
 		FROM unanswered_queue u
 		JOIN conversations c ON c.id = u.conversation_id
 		WHERE c.business_id = $1 AND u.status = 'pending'
@@ -85,7 +107,7 @@ func (a *Admins) PendingUnanswered(ctx context.Context, businessID int64, limit 
 	var out []PendingQuestion
 	for rows.Next() {
 		var p PendingQuestion
-		if err := rows.Scan(&p.ID, &p.Question, &p.UserName); err != nil {
+		if err := rows.Scan(&p.ID, &p.Question, &p.UserName, &p.CreatedAt); err != nil {
 			return nil, fmt.Errorf("scan pending: %w", err)
 		}
 		out = append(out, p)
@@ -95,24 +117,28 @@ func (a *Admins) PendingUnanswered(ctx context.Context, businessID int64, limit 
 
 // UnansweredTarget is who to reply to for a pending question.
 type UnansweredTarget struct {
-	Channel  core.Channel
-	ReplyTo  string // channel reply address (e.g. Telegram chat id)
-	UserName string // customer display name, may be empty
-	Question string
+	Channel   core.Channel
+	ReplyTo   string // channel reply address (e.g. Telegram chat id)
+	UserName  string // customer display name, may be empty
+	Question  string
+	CreatedAt time.Time
 }
+
+// Ago is the time since the question arrived, e.g. "2h ago".
+func (t UnansweredTarget) Ago() string { return ago(t.CreatedAt) }
 
 // GetUnanswered returns the reply target for a pending queue item, scoped to the
 // business so an admin can only reply within their own tenant.
 func (a *Admins) GetUnanswered(ctx context.Context, businessID, id int64) (UnansweredTarget, error) {
 	const q = `
-		SELECT c.channel, c.external_user_id, coalesce(c.external_user_name, ''), u.question
+		SELECT c.channel, c.external_user_id, coalesce(c.external_user_name, ''), u.question, c.created_at
 		FROM unanswered_queue u
 		JOIN conversations c ON c.id = u.conversation_id
 		WHERE u.id = $1 AND c.business_id = $2 AND u.status = 'pending'`
 
 	var t UnansweredTarget
 	var channel string
-	if err := a.pool.QueryRow(ctx, q, id, businessID).Scan(&channel, &t.ReplyTo, &t.UserName, &t.Question); err != nil {
+	if err := a.pool.QueryRow(ctx, q, id, businessID).Scan(&channel, &t.ReplyTo, &t.UserName, &t.Question, &t.CreatedAt); err != nil {
 		return UnansweredTarget{}, fmt.Errorf("get unanswered: %w", err)
 	}
 	t.Channel = core.Channel(channel)

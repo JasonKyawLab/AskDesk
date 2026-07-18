@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/JasonKyawLab/AskDesk/internal/core"
 	"github.com/JasonKyawLab/AskDesk/internal/store"
@@ -74,9 +75,10 @@ func (h *AdminHandler) handleStats(w http.ResponseWriter, r *http.Request) {
 }
 
 type pendingItem struct {
-	ID       int64  `json:"id"`
-	Question string `json:"question"`
-	Customer string `json:"customer"`
+	ID        int64  `json:"id"`
+	Question  string `json:"question"`
+	Customer  string `json:"customer"`
+	CreatedAt string `json:"created_at"` // RFC3339 UTC; "" if unknown
 }
 
 func (h *AdminHandler) handlePending(w http.ResponseWriter, r *http.Request) {
@@ -87,7 +89,11 @@ func (h *AdminHandler) handlePending(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]pendingItem, 0, len(items))
 	for _, it := range items {
-		out = append(out, pendingItem{ID: it.ID, Question: it.Question, Customer: it.UserName})
+		created := ""
+		if !it.CreatedAt.IsZero() {
+			created = it.CreatedAt.UTC().Format(time.RFC3339)
+		}
+		out = append(out, pendingItem{ID: it.ID, Question: it.Question, Customer: it.UserName, CreatedAt: created})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"pending": out})
 }

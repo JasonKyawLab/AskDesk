@@ -204,7 +204,7 @@ func (p *AdminPanel) pendingScreen(ctx context.Context) (string, Keyboard, error
 		if name == "" {
 			name = "customer"
 		}
-		label := truncLabel(fmt.Sprintf("#%d %s: %s", it.ID, name, it.Question))
+		label := truncLabel(fmt.Sprintf("#%d %s · %s: %s", it.ID, name, it.Ago(), it.Question))
 		kb = append(kb, []Button{{Text: label, Data: "a:q:" + strconv.FormatInt(it.ID, 10)}})
 	}
 	kb = append(kb, backRow()...)
@@ -226,7 +226,7 @@ func (p *AdminPanel) detailScreen(ctx context.Context, idStr string) (string, Ke
 	if name == "" {
 		name = "customer"
 	}
-	text := fmt.Sprintf("📨 #%d — from %s:\n\n%s", id, name, t.Question)
+	text := fmt.Sprintf("📨 #%d — from %s · %s:\n\n%s", id, name, t.Ago(), t.Question)
 	kb := Keyboard{
 		{{Text: "✍️ Reply", Data: "a:r:" + idStr}, {Text: "🗑 Dismiss", Data: "a:d:" + idStr}},
 		{{Text: "⬅️ Pending", Data: cbPending}},
