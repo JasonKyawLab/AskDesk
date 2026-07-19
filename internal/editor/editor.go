@@ -173,11 +173,15 @@ func (h *Handler) HandleSettings(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	rate, _ := strconv.Atoi(r.FormValue("ask_rate_per_min"))
+	global, _ := strconv.Atoi(r.FormValue("ask_global_per_min"))
 	s := store.BusinessSettings{
 		DisplayName:     strings.TrimSpace(r.FormValue("display_name")),
 		WelcomeMessage:  strings.TrimSpace(r.FormValue("welcome_message")),
 		FallbackMessage: strings.TrimSpace(r.FormValue("fallback_message")),
 		AskPrompt:       strings.TrimSpace(r.FormValue("ask_prompt")),
+		AskRatePerMin:   rate,
+		AskGlobalPerMin: global,
 	}
 	if err := h.settings.UpdateSettings(r.Context(), claims.BusinessID, s); err != nil {
 		h.serverError(w, "update settings", err)

@@ -28,7 +28,10 @@ type fakeFAQs struct {
 func (f fakeFAQs) Categories(context.Context, int64) ([]string, error) { return f.cats, nil }
 func (f fakeFAQs) List(context.Context, int64) ([]store.FAQ, error)    { return f.list, nil }
 
-type fakeBiz struct{ valid string }
+type fakeBiz struct {
+	valid        string
+	rate, global int // 0 = unlimited
+}
 
 func (f fakeBiz) IDByAPIKey(_ context.Context, key string) (int64, error) {
 	if key == f.valid {
@@ -36,8 +39,11 @@ func (f fakeBiz) IDByAPIKey(_ context.Context, key string) (int64, error) {
 	}
 	return 0, store.ErrUnknownAPIKey
 }
-func (fakeBiz) Settings(context.Context, int64) (store.BusinessSettings, error) {
-	return store.BusinessSettings{DisplayName: "MiniPOS", WelcomeMessage: "hi", AskPrompt: "ask"}, nil
+func (f fakeBiz) Settings(context.Context, int64) (store.BusinessSettings, error) {
+	return store.BusinessSettings{
+		DisplayName: "MiniPOS", WelcomeMessage: "hi", AskPrompt: "ask", FallbackMessage: "busy",
+		AskRatePerMin: f.rate, AskGlobalPerMin: f.global,
+	}, nil
 }
 
 type fakeReplies struct{ list []store.WebReply }
@@ -122,6 +128,23 @@ func TestAPI_Ask(t *testing.T) {
 	_ = json.Unmarshal(rec.Body.Bytes(), &got)
 	if got.Answer != "Yes, we deliver." || !got.Answered {
 		t.Errorf("unexpected ask response: %+v", got)
+	}
+}
+
+func TestAPI_AskRateLimited(t *testing.T) {
+	h := New(fakeEngine{reply: core.Reply{Text: "ok", Answered: true}}, fakeFAQs{},
+		fakeBiz{valid: "goodkey", rate: 2}, fakeReplies{}, []string{"*"},
+		slog.New(slog.NewTextHandler(io.Discard, nil)))
+	body := `{"message":"q","session_id":"s"}`
+
+	for i := 0; i < 2; i++ {
+		if rec := do(h, http.MethodPost, "/api/v1/ask", "goodkey", body); rec.Code != http.StatusOK {
+			t.Fatalf("call %d = %d, want 200", i+1, rec.Code)
+		}
+	}
+	rec := do(h, http.MethodPost, "/api/v1/ask", "goodkey", body)
+	if rec.Code != http.StatusTooManyRequests {
+		t.Errorf("3rd call = %d, want 429", rec.Code)
 	}
 }
 

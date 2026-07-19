@@ -46,6 +46,7 @@ type Handler struct {
 	faqs    FAQStore
 	biz     BusinessStore
 	replies ReplyStore
+	limiter *rateLimiter
 	origins []string // CORS allowlist; "*" allows any origin
 	log     *slog.Logger
 	mux     *http.ServeMux
@@ -54,7 +55,7 @@ type Handler struct {
 // New builds the API handler. allowedOrigins is the CORS allowlist (["*"] allows
 // any origin — fine here since auth is a header API key, not a cookie).
 func New(engine Engine, faqs FAQStore, biz BusinessStore, replies ReplyStore, allowedOrigins []string, log *slog.Logger) *Handler {
-	h := &Handler{engine: engine, faqs: faqs, biz: biz, replies: replies, origins: allowedOrigins, log: log, mux: http.NewServeMux()}
+	h := &Handler{engine: engine, faqs: faqs, biz: biz, replies: replies, limiter: newRateLimiter(), origins: allowedOrigins, log: log, mux: http.NewServeMux()}
 	h.mux.HandleFunc("GET /api/v1/config", h.handleConfig)
 	h.mux.HandleFunc("GET /api/v1/faqs", h.handleFAQs)
 	h.mux.HandleFunc("POST /api/v1/ask", h.handleAsk)
@@ -172,10 +173,26 @@ func (h *Handler) handleAsk(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	id := businessID(r.Context())
+	session := sessionOrAnon(req.SessionID)
+
+	// Rate limits (per-business, adjustable at runtime via settings). Falls back
+	// to defaults if settings can't be loaded.
+	settings, _ := h.biz.Settings(r.Context(), id)
+	if !h.limiter.allow(globalKey(id), settings.AskGlobalPerMin) {
+		writeJSON(w, http.StatusTooManyRequests, askResponse{Answer: settings.FallbackMessage, Answered: false})
+		return
+	}
+	if !h.limiter.allow(userKey(id, session), settings.AskRatePerMin) {
+		writeJSON(w, http.StatusTooManyRequests, askResponse{
+			Answer: "You're sending messages very quickly — please wait a moment and try again.", Answered: false})
+		return
+	}
+
 	reply, err := h.engine.GenerateCustomerReply(r.Context(), core.Message{
-		BusinessID: businessID(r.Context()),
+		BusinessID: id,
 		Channel:    core.ChannelWidget,
-		UserID:     sessionOrAnon(req.SessionID),
+		UserID:     session,
 		Text:       req.Message,
 	})
 	if err != nil {

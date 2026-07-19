@@ -11,20 +11,27 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// BusinessSettings are per-business, runtime-editable presentation strings.
-// Empty fields fall back to defaults; "{name}" is replaced with the shop name.
+// BusinessSettings are per-business, runtime-editable presentation strings and
+// limits. Empty/zero fields fall back to defaults; "{name}" becomes the shop name.
 type BusinessSettings struct {
 	DisplayName     string `json:"display_name"`
 	WelcomeMessage  string `json:"welcome_message"`
 	FallbackMessage string `json:"fallback_message"`
 	AskPrompt       string `json:"ask_prompt"`
+	// AskRatePerMin caps a single user's questions per minute (anti-spam).
+	AskRatePerMin int `json:"ask_rate_per_min"`
+	// AskGlobalPerMin caps total questions per minute (protects the AI quota
+	// during a traffic spike — the knob to lower when you peak out).
+	AskGlobalPerMin int `json:"ask_global_per_min"`
 }
 
-// Defaults for each setting (used when a field is empty).
+// Defaults (used when a field is empty/zero).
 const (
-	DefaultWelcome  = "👋 Welcome to {name} support! Pick a topic below, or just type your question."
-	DefaultFallback = "Sorry, I'm a bit busy right now — please try again in a moment, or leave your message and our team will follow up."
-	DefaultAsk      = "💬 Type your question below — I'll answer right away, and if I can't, our team will follow up here."
+	DefaultWelcome         = "👋 Welcome to {name} support! Pick a topic below, or just type your question."
+	DefaultFallback        = "Sorry, I'm a bit busy right now — please try again in a moment, or leave your message and our team will follow up."
+	DefaultAsk             = "💬 Type your question below — I'll answer right away, and if I can't, our team will follow up here."
+	DefaultAskRatePerMin   = 10
+	DefaultAskGlobalPerMin = 60
 )
 
 // resolve fills empty fields with defaults and substitutes {name}. businessName
@@ -36,7 +43,18 @@ func (s BusinessSettings) resolve(businessName string) BusinessSettings {
 		WelcomeMessage:  subName(firstNonEmpty(s.WelcomeMessage, DefaultWelcome), name),
 		FallbackMessage: subName(firstNonEmpty(s.FallbackMessage, DefaultFallback), name),
 		AskPrompt:       subName(firstNonEmpty(s.AskPrompt, DefaultAsk), name),
+		AskRatePerMin:   firstPositive(s.AskRatePerMin, DefaultAskRatePerMin),
+		AskGlobalPerMin: firstPositive(s.AskGlobalPerMin, DefaultAskGlobalPerMin),
 	}
+}
+
+func firstPositive(vals ...int) int {
+	for _, v := range vals {
+		if v > 0 {
+			return v
+		}
+	}
+	return 0
 }
 
 // ErrUnknownAPIKey means no business matched the presented API key.

@@ -68,6 +68,12 @@ const pageTemplate = `<!doctype html>
     <label>“Ask a question” prompt
       <textarea name="ask_prompt" placeholder="💬 Type your question below — I'll answer right away…">{{.Settings.AskPrompt}}</textarea>
     </label>
+    <label>Max questions per user / minute <small>(0 = default 10)</small>
+      <input name="ask_rate_per_min" type="number" min="0" value="{{if .Settings.AskRatePerMin}}{{.Settings.AskRatePerMin}}{{end}}" placeholder="10">
+    </label>
+    <label>Max questions total / minute <small>(lower this if you peak out; 0 = default 60)</small>
+      <input name="ask_global_per_min" type="number" min="0" value="{{if .Settings.AskGlobalPerMin}}{{.Settings.AskGlobalPerMin}}{{end}}" placeholder="60">
+    </label>
     <button class="primary" type="submit">Save settings</button>
   </form>
 
