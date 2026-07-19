@@ -181,10 +181,12 @@ either key with `UPDATE businesses SET admin_api_key = gen_random_uuid()::text
 WHERE id = 1;`.
 
 **Security:** the API is read-only and tenant-isolated — a key only reads its own
-business's public FAQs, and nothing can be written through it. The one caveat:
-`POST /ask` spends your Gemini quota and is **not yet rate-limited**, so call it
-from your **backend** (key stays server-side), or lock CORS to your domain and
-rate-limit `/ask` yourself.
+business's public FAQs, and nothing can be written through it. `POST /ask` is
+**rate-limited** (returns `429` when exceeded) with two runtime-adjustable knobs
+on the `/edit` settings page: **per user / minute** (anti-spam, default 10) and
+**total / minute** (protects the shared Gemini quota — lower it during a spike;
+default 60). Still, prefer calling `/ask` from your **backend** so the key stays
+server-side.
 
 ---
 
