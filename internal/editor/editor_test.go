@@ -22,7 +22,8 @@ func (fakeFAQs) List(context.Context, int64) ([]store.FAQ, error) { return nil, 
 func (fakeFAQs) Create(context.Context, int64, string, string, string) (int64, error) {
 	return 1, nil
 }
-func (fakeFAQs) Delete(context.Context, int64, int64) error { return nil }
+func (fakeFAQs) Update(context.Context, int64, int64, string, string, string) error { return nil }
+func (fakeFAQs) Delete(context.Context, int64, int64) error                         { return nil }
 
 type fakeSettings struct{}
 

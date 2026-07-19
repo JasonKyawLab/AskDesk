@@ -89,15 +89,23 @@ const pageTemplate = `<!doctype html>
   {{if not .FAQs}}<p class="empty">No FAQs yet.</p>{{end}}
   {{range .FAQs}}
     <div class="faq">
-      <div class="q">{{.Question}}</div>
-      <div class="a">{{.Answer}}</div>
-      {{if .Category}}<span class="cat">{{.Category}}</span>{{end}}
-      <div>
-        <form method="post" action="/edit/faqs/delete" onsubmit="return confirm('Delete this FAQ?')">
-          <input type="hidden" name="id" value="{{.ID}}">
-          <button class="del" type="submit">Delete</button>
-        </form>
-      </div>
+      <form method="post" action="/edit/faqs/update">
+        <input type="hidden" name="id" value="{{.ID}}">
+        <label>Question
+          <input name="question" value="{{.Question}}" required autocomplete="off">
+        </label>
+        <label>Answer
+          <textarea name="answer" required>{{.Answer}}</textarea>
+        </label>
+        <label>Category
+          <input name="category" value="{{.Category}}" autocomplete="off">
+        </label>
+        <button class="primary" type="submit">Save changes</button>
+      </form>
+      <form method="post" action="/edit/faqs/delete" onsubmit="return confirm('Delete this FAQ?')">
+        <input type="hidden" name="id" value="{{.ID}}">
+        <button class="del" type="submit">Delete</button>
+      </form>
     </div>
   {{end}}
 </body>

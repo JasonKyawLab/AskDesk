@@ -127,6 +127,7 @@ func run() error {
 				cfg.IsProduction() || strings.HasPrefix(cfg.PublicURL, "https"), log)
 			srv.Mount("GET /edit", http.HandlerFunc(ed.HandleEdit))
 			srv.Mount("POST /edit/faqs", http.HandlerFunc(ed.HandleCreate))
+			srv.Mount("POST /edit/faqs/update", http.HandlerFunc(ed.HandleUpdate))
 			srv.Mount("POST /edit/faqs/delete", http.HandlerFunc(ed.HandleDelete))
 			srv.Mount("POST /edit/settings", http.HandlerFunc(ed.HandleSettings))
 			srv.Mount("POST /edit/reply", http.HandlerFunc(ed.HandleReply))

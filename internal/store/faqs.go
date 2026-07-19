@@ -184,6 +184,22 @@ func (f *FAQs) GetByID(ctx context.Context, businessID, id int64) (FAQ, error) {
 	return it, nil
 }
 
+// Update edits a FAQ and re-embeds its question. business_id-scoped.
+func (f *FAQs) Update(ctx context.Context, businessID, id int64, question, answer, category string) error {
+	emb, err := f.embedder.Embed(ctx, question)
+	if err != nil {
+		return fmt.Errorf("embed question: %w", err)
+	}
+	const q = `
+		UPDATE faqs
+		SET question = $3, answer = $4, embedding = $5::vector, category = $6, updated_at = now()
+		WHERE business_id = $1 AND id = $2`
+	if _, err := f.pool.Exec(ctx, q, businessID, id, question, answer, encodeVector(emb), nullIfEmpty(category)); err != nil {
+		return fmt.Errorf("update faq: %w", err)
+	}
+	return nil
+}
+
 // Delete removes a FAQ. The business_id filter enforces tenant isolation: a
 // business can only delete its own FAQs.
 func (f *FAQs) Delete(ctx context.Context, businessID, id int64) error {

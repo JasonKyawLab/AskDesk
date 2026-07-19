@@ -27,6 +27,7 @@ const (
 type FAQStore interface {
 	List(ctx context.Context, businessID int64) ([]store.FAQ, error)
 	Create(ctx context.Context, businessID int64, question, answer, category string) (int64, error)
+	Update(ctx context.Context, businessID, id int64, question, answer, category string) error
 	Delete(ctx context.Context, businessID, id int64) error
 }
 
@@ -199,6 +200,26 @@ func (h *Handler) HandleCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	if _, err := h.faqs.Create(r.Context(), claims.BusinessID, question, answer, r.FormValue("category")); err != nil {
 		h.serverError(w, "create faq", err)
+		return
+	}
+	http.Redirect(w, r, "/edit", http.StatusSeeOther)
+}
+
+// HandleUpdate edits an existing FAQ (re-embeds the question).
+func (h *Handler) HandleUpdate(w http.ResponseWriter, r *http.Request) {
+	claims, ok := h.requireSession(w, r)
+	if !ok {
+		return
+	}
+	id, err := strconv.ParseInt(r.FormValue("id"), 10, 64)
+	question := r.FormValue("question")
+	answer := r.FormValue("answer")
+	if err != nil || question == "" || answer == "" {
+		http.Redirect(w, r, "/edit", http.StatusSeeOther)
+		return
+	}
+	if err := h.faqs.Update(r.Context(), claims.BusinessID, id, question, answer, r.FormValue("category")); err != nil {
+		h.serverError(w, "update faq", err)
 		return
 	}
 	http.Redirect(w, r, "/edit", http.StatusSeeOther)
