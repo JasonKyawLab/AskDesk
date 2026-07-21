@@ -59,6 +59,7 @@ func run() error {
 		store.NewConversations(pool),
 		store.NewBusinesses(pool),
 		log,
+		core.WithGenerationFloor(cfg.GenerationFloor),
 	)
 
 	var signer *auth.Signer

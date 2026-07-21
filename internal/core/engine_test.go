@@ -22,9 +22,11 @@ func (f *fakeRetriever) Search(context.Context, int64, string, int) ([]Match, er
 type fakeAI struct {
 	answer string
 	err    error
+	called bool
 }
 
 func (f *fakeAI) GenerateReply(context.Context, string, []Match) (string, error) {
+	f.called = true
 	return f.answer, f.err
 }
 
@@ -141,5 +143,46 @@ func TestGenerateCustomerReply_AIError_Degrades(t *testing.T) {
 	}
 	if !store.enqueued {
 		t.Error("degraded question should be enqueued as unanswered")
+	}
+}
+
+func TestGenerateCustomerReply_BelowGenerationFloorSkipsAI(t *testing.T) {
+	retriever := &fakeRetriever{matches: []Match{{FAQID: 7, Answer: "meh", Score: 0.30}}}
+	ai := &fakeAI{answer: "should not be used"}
+	store := &fakeStore{}
+	engine := NewEngine(retriever, ai, store, fakeFallback{"fallback"},
+		slog.New(slog.NewTextHandler(io.Discard, nil)), WithGenerationFloor(0.5))
+
+	reply, err := engine.GenerateCustomerReply(context.Background(), Message{BusinessID: 1, Text: "weird question"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ai.called {
+		t.Error("AI must not be called when score is below the generation floor")
+	}
+	if reply.Answered || reply.Text != "fallback" {
+		t.Errorf("expected fallback reply, got %+v", reply)
+	}
+	if !store.enqueued {
+		t.Error("skipped question should be enqueued as unanswered for a human")
+	}
+}
+
+func TestGenerateCustomerReply_AboveFloorStillCallsAI(t *testing.T) {
+	retriever := &fakeRetriever{matches: []Match{{FAQID: 7, Answer: "ok", Score: 0.60}}}
+	ai := &fakeAI{answer: "generated"}
+	store := &fakeStore{}
+	engine := NewEngine(retriever, ai, store, fakeFallback{"fallback"},
+		slog.New(slog.NewTextHandler(io.Discard, nil)), WithGenerationFloor(0.5))
+
+	reply, err := engine.GenerateCustomerReply(context.Background(), Message{BusinessID: 1, Text: "ok question"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !ai.called {
+		t.Error("AI should be called when score is at or above the floor")
+	}
+	if reply.Text != "generated" {
+		t.Errorf("expected AI answer, got %q", reply.Text)
 	}
 }

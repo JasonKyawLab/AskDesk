@@ -72,7 +72,8 @@ func run() error {
 		bizStore := store.NewBusinesses(pool)
 		adminStore := store.NewAdmins(pool)
 		webReplies := store.NewWebReplies(pool)
-		engine := core.NewEngine(faqStore, genProvider, store.NewConversations(pool), bizStore, log)
+		engine := core.NewEngine(faqStore, genProvider, store.NewConversations(pool), bizStore, log,
+			core.WithGenerationFloor(cfg.GenerationFloor))
 		deliverer := app.NewChannelDeliverer(cfg, webReplies)
 
 		var signer *auth.Signer

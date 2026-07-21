@@ -59,11 +59,24 @@ type Engine struct {
 	fallback  FallbackProvider
 	log       *slog.Logger
 	threshold float64
+	genFloor  float64
+}
+
+// Option customises an Engine at construction.
+type Option func(*Engine)
+
+// WithGenerationFloor sets the minimum best-match score below which the engine
+// skips the AI call entirely and hands the question straight to a human (saving
+// tokens). A floor of 0 (the default) disables the skip: every question is sent
+// to the AI as before. Set it to the confidence threshold (0.75) to skip AI on
+// any question no FAQ answers well.
+func WithGenerationFloor(floor float64) Option {
+	return func(e *Engine) { e.genFloor = floor }
 }
 
 // NewEngine constructs an Engine.
-func NewEngine(r Retriever, ai AIProvider, store ConversationStore, fallback FallbackProvider, log *slog.Logger) *Engine {
-	return &Engine{
+func NewEngine(r Retriever, ai AIProvider, store ConversationStore, fallback FallbackProvider, log *slog.Logger, opts ...Option) *Engine {
+	e := &Engine{
 		retriever: r,
 		ai:        ai,
 		store:     store,
@@ -71,6 +84,10 @@ func NewEngine(r Retriever, ai AIProvider, store ConversationStore, fallback Fal
 		log:       log,
 		threshold: defaultConfidenceThreshold,
 	}
+	for _, opt := range opts {
+		opt(e)
+	}
+	return e
 }
 
 // GenerateCustomerReply is the single entrypoint every customer channel funnels
@@ -86,6 +103,13 @@ func (e *Engine) GenerateCustomerReply(ctx context.Context, msg Message) (Reply,
 
 	best := bestScore(matches)
 	answered := best >= e.threshold
+
+	// If the best FAQ match is too weak to be worth an AI call, skip generation
+	// (and its token cost) and hand the question straight to a human.
+	if best < e.genFloor {
+		e.log.Info("below generation floor; skipping AI", "score", best, "floor", e.genFloor, "business_id", msg.BusinessID)
+		return e.degrade(ctx, msg), nil
+	}
 
 	answer, err := e.ai.GenerateReply(ctx, msg.Text, matches)
 	if err != nil {
