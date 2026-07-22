@@ -73,7 +73,7 @@ var menuFAQs = []store.FAQ{
 }
 
 func newMenuHandler(rc *recordingClient) *Handler {
-	return NewHandler(&fakeSubmitter{}, fakeMenuStore{faqs: menuFAQs}, rc, nil, 1, "", "v", discardLogger())
+	return NewHandler(&fakeSubmitter{}, fakeMenuStore{faqs: menuFAQs}, rc, nil, nil, 1, "", "v", discardLogger())
 }
 
 func post(h *Handler, body string) {
@@ -124,7 +124,7 @@ func TestMenu_PostbackAnswerSendsFAQ(t *testing.T) {
 func TestMenu_FreeTextStillReachesEngine(t *testing.T) {
 	rc := &recordingClient{}
 	sub := &fakeSubmitter{}
-	h := NewHandler(sub, fakeMenuStore{faqs: menuFAQs}, rc, nil, 1, "", "v", discardLogger())
+	h := NewHandler(sub, fakeMenuStore{faqs: menuFAQs}, rc, nil, nil, 1, "", "v", discardLogger())
 	post(h, `{"entry":[{"messaging":[{"sender":{"id":"U"},"message":{"text":"do you support kbz pay?"}}]}]}`)
 
 	if !sub.called {
@@ -132,5 +132,32 @@ func TestMenu_FreeTextStillReachesEngine(t *testing.T) {
 	}
 	if len(rc.quick) != 0 || len(rc.cards) != 0 {
 		t.Error("a real question must not trigger menu rendering")
+	}
+}
+
+type fakeProfiles struct {
+	name  string
+	calls int
+}
+
+func (f *fakeProfiles) GetProfile(context.Context, string) (string, error) {
+	f.calls++
+	return f.name, nil
+}
+
+func TestFreeText_ResolvesCustomerName(t *testing.T) {
+	sub := &fakeSubmitter{}
+	prof := &fakeProfiles{name: "Aung Aung"}
+	h := NewHandler(sub, nil, nil, nil, prof, 1, "", "v", discardLogger())
+
+	body := `{"entry":[{"messaging":[{"sender":{"id":"PSID9"},"message":{"text":"is it free?"}}]}]}`
+	post(h, body)
+	post(h, body) // second message from same user must hit the cache
+
+	if sub.msg.UserName != "Aung Aung" {
+		t.Errorf("UserName = %q, want resolved profile name", sub.msg.UserName)
+	}
+	if prof.calls != 1 {
+		t.Errorf("GetProfile calls = %d, want 1 (cached after first)", prof.calls)
 	}
 }

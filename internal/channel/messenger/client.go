@@ -143,6 +143,36 @@ func (c *Client) SetupProfile(ctx context.Context, getStartedPayload, browseTitl
 	})
 }
 
+// GetProfile fetches a user's display name by their page-scoped id (PSID).
+// Messenger webhooks carry only the PSID, so this is how the inbox learns who
+// sent a message. Returns "" (no error) when the name isn't available.
+func (c *Client) GetProfile(ctx context.Context, psid string) (string, error) {
+	endpoint := fmt.Sprintf("%s/%s?fields=first_name,last_name&access_token=%s",
+		c.baseURL, url.PathEscape(psid), url.QueryEscape(c.pageToken))
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return "", fmt.Errorf("messenger: build profile: %w", err)
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("messenger: profile failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("messenger: profile status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	var p struct {
+		First string `json:"first_name"`
+		Last  string `json:"last_name"`
+	}
+	if err := json.Unmarshal(body, &p); err != nil {
+		return "", fmt.Errorf("messenger: decode profile: %w", err)
+	}
+	return strings.TrimSpace(p.First + " " + p.Last), nil
+}
+
 // post sends a JSON payload to a Graph API path under the page token.
 func (c *Client) post(ctx context.Context, path string, payload map[string]any) error {
 	buf, err := json.Marshal(payload)

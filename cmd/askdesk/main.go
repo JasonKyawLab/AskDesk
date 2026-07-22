@@ -139,7 +139,7 @@ func run() error {
 				}
 
 				srv.Mount("/webhook/messenger",
-					messenger.NewHandler(submitter, faqStore, mClient, bizStore, cfg.BusinessID, cfg.MessengerAppSecret, cfg.MessengerVerifyToken, log))
+					messenger.NewHandler(submitter, faqStore, mClient, bizStore, mClient, cfg.BusinessID, cfg.MessengerAppSecret, cfg.MessengerVerifyToken, log))
 				log.Info("messenger webhook enabled", "business_id", cfg.BusinessID)
 				if cfg.MessengerAppSecret == "" {
 					log.Warn("messenger app secret is empty; requests are not verified")

@@ -39,7 +39,7 @@ func sign(secret, body string) string {
 }
 
 func TestHandler_VerifyHandshake(t *testing.T) {
-	h := NewHandler(&fakeSubmitter{}, nil, nil, nil, 1, "sekret", "verify-me", discardLogger())
+	h := NewHandler(&fakeSubmitter{}, nil, nil, nil, nil, 1, "sekret", "verify-me", discardLogger())
 
 	req := httptest.NewRequest(http.MethodGet,
 		"/webhook/messenger?hub.mode=subscribe&hub.verify_token=verify-me&hub.challenge=CHALLENGE42", nil)
@@ -55,7 +55,7 @@ func TestHandler_VerifyHandshake(t *testing.T) {
 }
 
 func TestHandler_VerifyWrongToken(t *testing.T) {
-	h := NewHandler(&fakeSubmitter{}, nil, nil, nil, 1, "sekret", "verify-me", discardLogger())
+	h := NewHandler(&fakeSubmitter{}, nil, nil, nil, nil, 1, "sekret", "verify-me", discardLogger())
 
 	req := httptest.NewRequest(http.MethodGet,
 		"/webhook/messenger?hub.mode=subscribe&hub.verify_token=WRONG&hub.challenge=x", nil)
@@ -69,7 +69,7 @@ func TestHandler_VerifyWrongToken(t *testing.T) {
 
 func TestHandler_NormalizesAndSubmits(t *testing.T) {
 	sub := &fakeSubmitter{}
-	h := NewHandler(sub, nil, nil, nil, 1, "sekret", "v", discardLogger())
+	h := NewHandler(sub, nil, nil, nil, nil, 1, "sekret", "v", discardLogger())
 
 	req := httptest.NewRequest(http.MethodPost, "/webhook/messenger", strings.NewReader(messageJSON))
 	req.Header.Set("X-Hub-Signature-256", sign("sekret", messageJSON))
@@ -95,7 +95,7 @@ func TestHandler_NormalizesAndSubmits(t *testing.T) {
 
 func TestHandler_RejectsBadSignature(t *testing.T) {
 	sub := &fakeSubmitter{}
-	h := NewHandler(sub, nil, nil, nil, 1, "sekret", "v", discardLogger())
+	h := NewHandler(sub, nil, nil, nil, nil, 1, "sekret", "v", discardLogger())
 
 	req := httptest.NewRequest(http.MethodPost, "/webhook/messenger", strings.NewReader(messageJSON))
 	req.Header.Set("X-Hub-Signature-256", sign("wrong-secret", messageJSON))
@@ -112,7 +112,7 @@ func TestHandler_RejectsBadSignature(t *testing.T) {
 
 func TestHandler_IgnoresEchoAndNonText(t *testing.T) {
 	sub := &fakeSubmitter{}
-	h := NewHandler(sub, nil, nil, nil, 1, "", "v", discardLogger()) // empty secret: signature check disabled
+	h := NewHandler(sub, nil, nil, nil, nil, 1, "", "v", discardLogger()) // empty secret: signature check disabled
 
 	// An echo of our own outbound message plus a delivery receipt — neither is a
 	// customer question.

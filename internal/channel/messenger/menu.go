@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/JasonKyawLab/AskDesk/internal/channel/chatui"
 	"github.com/JasonKyawLab/AskDesk/internal/store"
 )
 
@@ -41,30 +42,16 @@ const (
 	maxCategories = 12 // quick replies allow 13; keep one slot for "Ask"
 )
 
-const (
-	defaultWelcome = "👋 Welcome! Pick a topic below, or just type your question."
-	defaultAsk     = "💬 Type your question below — I'll answer right away, and if I can't, our team will follow up here."
-)
-
 // menuEnabled reports whether the button menu is wired up.
 func (h *Handler) menuEnabled() bool {
 	return h.menu != nil && h.menuClient != nil
-}
-
-// isGreeting reports whether text should open the menu instead of the AI.
-func isGreeting(text string) bool {
-	switch strings.ToLower(strings.TrimSpace(text)) {
-	case "hi", "hello", "hey", "start", "menu", "get started", "/start", "/menu":
-		return true
-	}
-	return false
 }
 
 // handleMenu routes a menu payload (postback or quick reply) to the right screen.
 func (h *Handler) handleMenu(ctx context.Context, recipientID, payload string) {
 	switch {
 	case payload == payloadAsk:
-		h.send(ctx, recipientID, h.menuClient.SendMessage(ctx, recipientID, h.askText(ctx)))
+		h.send(ctx, recipientID, h.menuClient.SendMessage(ctx, recipientID, chatui.Ask(ctx, h.settings, h.businessID)))
 	case strings.HasPrefix(payload, prefixCat):
 		h.showCategory(ctx, recipientID, strings.TrimPrefix(payload, prefixCat))
 	case strings.HasPrefix(payload, prefixFAQ):
@@ -94,7 +81,7 @@ func (h *Handler) showMainMenu(ctx context.Context, recipientID string) {
 		replies = append(replies, QuickReply{Title: c, Payload: prefixCat + c})
 	}
 	replies = append(replies, QuickReply{Title: "💬 Ask a question", Payload: payloadAsk})
-	h.send(ctx, recipientID, h.menuClient.SendQuickReplies(ctx, recipientID, h.welcomeText(ctx), replies))
+	h.send(ctx, recipientID, h.menuClient.SendQuickReplies(ctx, recipientID, chatui.Welcome(ctx, h.settings, h.businessID), replies))
 }
 
 // showCategory sends a carousel of the category's questions, each with a
@@ -140,26 +127,6 @@ func (h *Handler) showAnswer(ctx context.Context, recipientID string, id int64) 
 	}
 	h.send(ctx, recipientID, h.menuClient.SendQuickReplies(ctx, recipientID,
 		fmt.Sprintf("❓ %s\n\n%s", f.Question, f.Answer), replies))
-}
-
-// welcomeText returns the business's configured welcome message (or the default).
-func (h *Handler) welcomeText(ctx context.Context) string {
-	if h.settings != nil {
-		if s, err := h.settings.Settings(ctx, h.businessID); err == nil && s.WelcomeMessage != "" {
-			return s.WelcomeMessage
-		}
-	}
-	return defaultWelcome
-}
-
-// askText returns the business's configured ask prompt (or the default).
-func (h *Handler) askText(ctx context.Context) string {
-	if h.settings != nil {
-		if s, err := h.settings.Settings(ctx, h.businessID); err == nil && s.AskPrompt != "" {
-			return s.AskPrompt
-		}
-	}
-	return defaultAsk
 }
 
 // send logs a menu delivery failure without interrupting the webhook ack.
