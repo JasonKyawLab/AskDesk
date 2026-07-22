@@ -3,10 +3,10 @@
 > A multi-channel AI customer-support layer. One reply engine, many channels.
 
 AskDesk answers customer questions from a business's own FAQ knowledge base using
-retrieval-augmented generation (RAG). Customers reach it over **Telegram** or a
-**JSON API** you embed in any web app (e.g. [minipos](https://minipos.site)). It's
-built to be **self-hostable** and multi-tenant-ready — serving another business is
-data, not code.
+retrieval-augmented generation (RAG). Customers reach it over **Telegram**,
+**Facebook Messenger**, or a **JSON API** you embed in any web app
+(e.g. [minipos](https://minipos.site)). It's built to be **self-hostable** and
+multi-tenant-ready — serving another business is data, not code.
 
 Positioned as a **low-cost, self-hostable alternative** to SaaS support tools like
 Intercom and Chatbase: free-tier AI, cost-ordered provider failover, and
@@ -16,18 +16,23 @@ self-hosting are the cost advantage, not an afterthought.
 
 ## Features
 
-- **Two channels, one brain** — a Telegram bot and a JSON API share the same
-  engine, FAQs, and admin tools.
-- **Buttons + AI** — customers tap *category → question* for instant answers
-  (zero AI cost); free-typed questions go to RAG + AI.
-- **Cross-channel handoff** — unsure questions land in one shared inbox. Answer
-  from the Telegram `/admin` panel **or** a web admin page; the reply is routed
-  back to the customer's own channel (their Telegram chat, or their web widget
-  which polls for it). A web-only operator never needs Telegram.
+- **Many channels, one brain** — a Telegram bot, a Messenger bot, and a JSON API
+  share the same engine, FAQs, and admin tools.
+- **Buttons + AI** — on Telegram and Messenger, customers tap *category → question*
+  for instant answers (zero AI cost); free-typed questions go to RAG + AI.
+- **Answers only when sure** — the bot replies from the AI only on a confident FAQ
+  match; otherwise it skips the AI (no wasted tokens, no guessing) and sends a
+  clear handoff message while queuing the question for a human.
+- **Cross-channel handoff** — handed-off questions land in one shared inbox with
+  the sender's channel + name. Answer from the Telegram `/admin` panel **or** a
+  web admin page **or** your own app via the admin API; the reply is routed back
+  to the customer's own channel. A web-only operator never needs Telegram.
 - **Provider failover** — a cost-ordered AI chain with a circuit breaker; falls
   over to the next provider on quota limits or outages.
-- **Runtime config** — shop name, welcome/fallback messages, and FAQs are edited
-  from your phone via a signed magic-link web form. No redeploy.
+- **Rate limiting** — per-user and whole-deployment `/ask` limits, adjustable at
+  runtime to protect your AI quota during traffic spikes.
+- **Runtime config** — shop name, welcome/fallback messages, rate limits, and FAQs
+  are edited from your phone via a signed magic-link web form. No redeploy.
 - **Two deploy modes** — all-in-one (one free process) or web + worker split
   (Redis), chosen by a single env var.
 
@@ -36,15 +41,15 @@ self-hosting are the cost advantage, not an afterthought.
 ## Architecture
 
 ```
-Telegram bot ─┐
-              ├─→ normalize → { businessId, channel, userId, text }
-Web/JSON API ─┘                       │
+Telegram bot ──┐
+Messenger bot ─┼─→ normalize → { businessId, channel, userId, text }
+Web/JSON API ──┘                      │
                                       ▼
                        CORE REPLY ENGINE  (channel-agnostic)
                          1. RAG lookup  — pgvector similarity search over FAQs
-                         2. Confidence  — high → answer; low → fallback + queue
+                         2. Confidence  — high → generate; low → handoff + queue
                          3. Generate    — AI provider chain (failover + breaker)
-                         4. Log         — conversations; flag unanswered
+                         4. Log         — conversations; flag handed-off ones
                                       │
                          reply returned on the same channel
 ```
@@ -74,6 +79,11 @@ provider** (vectors from different models can't share a similarity index).
 **Telegram** — button menu built from FAQ categories, free-text → AI, admin panel
 with tap-to-reply, and a magic-link FAQ/settings editor. Webhook verified by a
 secret token.
+
+**Facebook Messenger** — the same button menu via Messenger-native UI (Get Started
+button + persistent menu, category quick-replies, a card carousel of questions),
+free-text → AI, and the shared human handoff. Webhook verified by the app-secret
+signature (`X-Hub-Signature-256`); customer names are resolved for the inbox.
 
 **Web / JSON API** — `/api/v1`, authenticated by an `X-API-Key` header:
 
@@ -108,7 +118,8 @@ your own admin UI all work — sharing one database and knowledge base.
 
 ## Security
 
-- **Telegram webhook** secret token verified in constant time
+- **Webhooks verified** — Telegram secret token (constant-time) and Messenger
+  `X-Hub-Signature-256` app-secret HMAC over the raw body
 - **Tenant isolation** — `business_id` scoping on every query (covered by tests)
 - **Admin auth** — signed, short-lived magic links → signed HttpOnly session
   (no passwords in chat)
@@ -129,7 +140,8 @@ All tables scoped by `business_id`.
 | `businesses` | Tenant: name, API key, JSONB settings (name, messages) |
 | `faqs` | Knowledge base: question, answer, `embedding vector(768)`, category |
 | `conversations` | Log: question, matched FAQ, AI answer, confidence, answered |
-| `unanswered_queue` | Questions pending an admin answer |
+| `unanswered_queue` | Handed-off questions pending an admin answer |
+| `web_replies` | Admin replies awaiting a web widget's next poll |
 | `admins` | Identity allow-list: business, channel, external id |
 
 ---
@@ -143,7 +155,7 @@ All tables scoped by `business_id`.
 | AI | **Gemini** (generation + embeddings) behind a cost-ordered provider chain |
 | Queue (optional) | **Redis + asynq** (web + worker split) |
 | Migrations | **golang-migrate**, embedded in the binary (auto-applied) |
-| Channels | **Telegram**, **Web/JSON API** |
+| Channels | **Telegram**, **Facebook Messenger**, **Web/JSON API** |
 | Container | **Docker** (distroless, non-root) |
 | CI | **GitHub Actions** (vet, race tests, build, govulncheck) + Dependabot |
 
@@ -167,12 +179,13 @@ an admin, load your FAQs, and register the webhook.
 
 ## Status
 
-Working and deployed (Render + Supabase, free tier): Telegram bot (button menu,
-admin panel, magic-link editor), the Web/JSON API, RAG, provider failover, and
-runtime settings — running for [minipos](https://minipos.site).
+Working and deployed (Render + Supabase, free tier): Telegram and Messenger bots
+(button menu, admin panel, magic-link editor), the Web/JSON API, RAG with
+confident-only answering + human handoff, provider failover, runtime settings,
+and rate limiting — running for [minipos](https://minipos.site).
 
-**Roadmap:** WhatsApp / Messenger adapters · embeddable web chat widget · per-user
-rate limiting · multi-tenant self-service onboarding · observability.
+**Roadmap:** WhatsApp adapter · embeddable web chat widget · multi-tenant
+self-service onboarding · observability.
 
 ---
 
