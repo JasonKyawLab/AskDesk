@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/JasonKyawLab/AskDesk/internal/channel/messenger"
 	"github.com/JasonKyawLab/AskDesk/internal/channel/telegram"
 	"github.com/JasonKyawLab/AskDesk/internal/config"
 	"github.com/JasonKyawLab/AskDesk/internal/core"
@@ -20,18 +21,24 @@ type WebReplyStore interface {
 // New channels add a case here.
 type ChannelDeliverer struct {
 	telegram   *telegram.Client
+	messenger  *messenger.Client
 	web        WebReplyStore
 	businessID int64
 }
 
 // NewChannelDeliverer builds a deliverer. web may be nil (web delivery disabled).
 func NewChannelDeliverer(cfg *config.Config, web WebReplyStore) *ChannelDeliverer {
-	var opts []telegram.ClientOption
+	var tgOpts []telegram.ClientOption
 	if cfg.TelegramAPIURL != "" {
-		opts = append(opts, telegram.WithBaseURL(cfg.TelegramAPIURL))
+		tgOpts = append(tgOpts, telegram.WithBaseURL(cfg.TelegramAPIURL))
+	}
+	var msgOpts []messenger.ClientOption
+	if cfg.MessengerAPIURL != "" {
+		msgOpts = append(msgOpts, messenger.WithBaseURL(cfg.MessengerAPIURL))
 	}
 	return &ChannelDeliverer{
-		telegram:   telegram.NewClient(cfg.TelegramBotToken, opts...),
+		telegram:   telegram.NewClient(cfg.TelegramBotToken, tgOpts...),
+		messenger:  messenger.NewClient(cfg.MessengerPageToken, msgOpts...),
 		web:        web,
 		businessID: cfg.BusinessID,
 	}
@@ -46,6 +53,8 @@ func (d *ChannelDeliverer) Deliver(ctx context.Context, channel core.Channel, re
 			return fmt.Errorf("bad telegram chat id %q: %w", replyTo, err)
 		}
 		return d.telegram.SendMessage(ctx, chatID, text)
+	case core.ChannelMessenger:
+		return d.messenger.SendMessage(ctx, replyTo, text)
 	case core.ChannelWidget:
 		if d.web == nil {
 			return fmt.Errorf("web delivery is not configured")
