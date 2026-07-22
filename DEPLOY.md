@@ -16,14 +16,17 @@ You don't have to run both channels. They're independent, driven by config:
 
 | You want | Set | Result |
 |---|---|---|
-| **Telegram only** | `ASKDESK_TELEGRAM_BOT_TOKEN` (skip the Web API) | the bot; the Web API simply goes unused |
-| **Web app only** | leave the bot token empty | just the `/api/v1` endpoints — no Telegram at all |
-| **Both** | set the bot token | both, sharing one database and FAQ set |
+| **Telegram** | `ASKDESK_TELEGRAM_BOT_TOKEN` | the Telegram bot |
+| **Messenger** | `ASKDESK_MESSENGER_PAGE_TOKEN` (+ app secret, verify token) | the Facebook Messenger bot |
+| **Web app** | (nothing — always on with a database) | the `/api/v1` endpoints for your own frontend |
+| **Any mix** | set the tokens for the ones you want | all share one database, FAQ set, and pending queue |
 
-The Web API is available whenever a database is configured; Telegram turns on
-only when a bot token is set. Everything below applies to whichever you pick —
-web-only setups skip the Telegram steps and manage FAQs, settings, and the
-pending-question queue through `make admin-link` instead (see the Web API
+Each channel turns on independently when its token is set; the Web API is
+available whenever a database is configured. They all share one engine and FAQ
+set, and a question from any channel lands in the **same** pending queue — an
+admin can answer it from Telegram, the web `/edit` page, or the admin API, and
+the reply routes back to the customer's original channel. Web-only setups skip
+the bot steps and manage everything through `make admin-link` (see the Web API
 section).
 
 ---
@@ -114,6 +117,47 @@ make set-webhook
 
 **Keep it awake (optional):** a free cron (cron-job.org) pinging
 `https://<your-app>.onrender.com/wake` every 5–10 min stops Render sleeping.
+
+---
+
+## Facebook Messenger (optional channel)
+
+Messenger runs alongside (or instead of) Telegram — same engine, same FAQs, same
+pending queue. It turns on when `ASKDESK_MESSENGER_PAGE_TOKEN` is set.
+
+### 1. Create the Meta app + page token
+1. At developers.facebook.com create an app (type **Business**) and add the
+   **Messenger** product, linked to your Facebook **Page**.
+2. Under Messenger → Settings, generate a **Page access token** → this is
+   `ASKDESK_MESSENGER_PAGE_TOKEN`.
+3. App Settings → Basic → copy the **App Secret** → `ASKDESK_MESSENGER_APP_SECRET`
+   (used to verify the `X-Hub-Signature-256` on every webhook).
+4. Pick any random string as your **Verify Token** → `ASKDESK_MESSENGER_VERIFY_TOKEN`
+   (you'll paste the same value into the webhook setup below).
+
+### 2. Set the env vars (AskDesk service)
+| Key | Value |
+|---|---|
+| `ASKDESK_MESSENGER_PAGE_TOKEN` | Page access token |
+| `ASKDESK_MESSENGER_APP_SECRET` | App Secret |
+| `ASKDESK_MESSENGER_VERIFY_TOKEN` | your chosen verify string |
+
+Redeploy. The boot log prints `messenger webhook enabled`.
+
+### 3. Connect the webhook
+In the Meta app → Messenger → **Webhooks** → Edit callback URL:
+- **Callback URL:** `https://<your-app>.onrender.com/webhook/messenger`
+- **Verify Token:** the same value as `ASKDESK_MESSENGER_VERIFY_TOKEN`
+- Click **Verify and Save** (Facebook calls the URL with a challenge — AskDesk
+  echoes it back), then **subscribe the page to the `messages` field**.
+
+Message your Page — the bot answers from your FAQs, and anything it can't answer
+lands in the shared pending queue. Replies from any admin surface route back to
+the customer in Messenger.
+
+> Note: FAQ text Q&A and human handoff work out of the box. There's no in-chat
+> button menu or `/admin` panel on Messenger (those are Telegram-only) — manage
+> FAQs/settings and answer questions from the web `/edit` page or the admin API.
 
 ---
 
