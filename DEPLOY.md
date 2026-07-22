@@ -10,9 +10,9 @@ Same code, two shapes — chosen by whether `ASKDESK_REDIS_URL` is set:
 The bot must be reachable over public HTTPS (hosted or tunneled) before Telegram
 can deliver messages.
 
-### Pick your channels — Telegram, Web API, or both
+### Pick your channels — Telegram, Messenger, Web API, or any mix
 
-You don't have to run both channels. They're independent, driven by config:
+You don't have to run every channel. They're independent, driven by config:
 
 | You want | Set | Result |
 |---|---|---|
