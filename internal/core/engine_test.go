@@ -146,43 +146,44 @@ func TestGenerateCustomerReply_AIError_Degrades(t *testing.T) {
 	}
 }
 
-func TestGenerateCustomerReply_BelowGenerationFloorSkipsAI(t *testing.T) {
+func TestGenerateCustomerReply_LowConfidenceHandsOffWithoutAI(t *testing.T) {
 	retriever := &fakeRetriever{matches: []Match{{FAQID: 7, Answer: "meh", Score: 0.30}}}
 	ai := &fakeAI{answer: "should not be used"}
 	store := &fakeStore{}
-	engine := NewEngine(retriever, ai, store, fakeFallback{"fallback"},
-		slog.New(slog.NewTextHandler(io.Discard, nil)), WithGenerationFloor(0.5))
+	engine := newTestEngine(retriever, ai, store)
 
 	reply, err := engine.GenerateCustomerReply(context.Background(), Message{BusinessID: 1, Text: "weird question"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if ai.called {
-		t.Error("AI must not be called when score is below the generation floor")
+		t.Error("AI must not be called below the confidence threshold")
 	}
 	if reply.Answered || reply.Text != "fallback" {
-		t.Errorf("expected fallback reply, got %+v", reply)
+		t.Errorf("expected the handoff (fallback) reply, got %+v", reply)
 	}
 	if !store.enqueued {
-		t.Error("skipped question should be enqueued as unanswered for a human")
+		t.Error("a handed-off question must be enqueued for a human")
 	}
 }
 
-func TestGenerateCustomerReply_AboveFloorStillCallsAI(t *testing.T) {
-	retriever := &fakeRetriever{matches: []Match{{FAQID: 7, Answer: "ok", Score: 0.60}}}
+func TestGenerateCustomerReply_ConfidentMatchCallsAI(t *testing.T) {
+	retriever := &fakeRetriever{matches: []Match{{FAQID: 7, Answer: "ok", Score: 0.88}}}
 	ai := &fakeAI{answer: "generated"}
 	store := &fakeStore{}
-	engine := NewEngine(retriever, ai, store, fakeFallback{"fallback"},
-		slog.New(slog.NewTextHandler(io.Discard, nil)), WithGenerationFloor(0.5))
+	engine := newTestEngine(retriever, ai, store)
 
-	reply, err := engine.GenerateCustomerReply(context.Background(), Message{BusinessID: 1, Text: "ok question"})
+	reply, err := engine.GenerateCustomerReply(context.Background(), Message{BusinessID: 1, Text: "clear question"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if !ai.called {
-		t.Error("AI should be called when score is at or above the floor")
+		t.Error("AI should be called for a confident match")
 	}
-	if reply.Text != "generated" {
-		t.Errorf("expected AI answer, got %q", reply.Text)
+	if !reply.Answered || reply.Text != "generated" {
+		t.Errorf("expected the AI answer, got %+v", reply)
+	}
+	if store.enqueued {
+		t.Error("a confident answer must not be enqueued")
 	}
 }

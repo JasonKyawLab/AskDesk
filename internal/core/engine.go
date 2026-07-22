@@ -59,24 +59,11 @@ type Engine struct {
 	fallback  FallbackProvider
 	log       *slog.Logger
 	threshold float64
-	genFloor  float64
-}
-
-// Option customises an Engine at construction.
-type Option func(*Engine)
-
-// WithGenerationFloor sets the minimum best-match score below which the engine
-// skips the AI call entirely and hands the question straight to a human (saving
-// tokens). A floor of 0 (the default) disables the skip: every question is sent
-// to the AI as before. Set it to the confidence threshold (0.75) to skip AI on
-// any question no FAQ answers well.
-func WithGenerationFloor(floor float64) Option {
-	return func(e *Engine) { e.genFloor = floor }
 }
 
 // NewEngine constructs an Engine.
-func NewEngine(r Retriever, ai AIProvider, store ConversationStore, fallback FallbackProvider, log *slog.Logger, opts ...Option) *Engine {
-	e := &Engine{
+func NewEngine(r Retriever, ai AIProvider, store ConversationStore, fallback FallbackProvider, log *slog.Logger) *Engine {
+	return &Engine{
 		retriever: r,
 		ai:        ai,
 		store:     store,
@@ -84,59 +71,47 @@ func NewEngine(r Retriever, ai AIProvider, store ConversationStore, fallback Fal
 		log:       log,
 		threshold: defaultConfidenceThreshold,
 	}
-	for _, opt := range opts {
-		opt(e)
-	}
-	return e
 }
 
 // GenerateCustomerReply is the single entrypoint every customer channel funnels
-// into: RAG lookup, confidence check, AI generation, then logging. Low-confidence
-// answers are still returned but flagged to the unanswered queue for an admin.
+// into: RAG lookup, confidence check, then either a grounded AI answer or a
+// clean handoff. The bot only answers when a FAQ matches confidently; otherwise
+// it hands off — a clear message to the customer plus a flag for an admin — so
+// customers are never left with silence or an uncertain guess.
 func (e *Engine) GenerateCustomerReply(ctx context.Context, msg Message) (Reply, error) {
 	matches, err := e.retriever.Search(ctx, msg.BusinessID, msg.Text, defaultTopK)
 	if err != nil {
-		// Retrieval (embedding) is down: degrade gracefully instead of going silent.
-		e.log.Error("faq search failed; degrading", "error", err, "business_id", msg.BusinessID)
-		return e.degrade(ctx, msg), nil
+		// Retrieval (embedding) is down: hand off gracefully instead of going silent.
+		e.log.Error("faq search failed; handing off", "error", err, "business_id", msg.BusinessID)
+		return e.handoff(ctx, msg), nil
 	}
 
+	// Only answer when a FAQ matches confidently. Below the threshold we skip the
+	// AI call entirely — no wasted tokens, no uncertain guess — and hand the
+	// question to a human with a clear message.
 	best := bestScore(matches)
-	answered := best >= e.threshold
-
-	// If the best FAQ match is too weak to be worth an AI call, skip generation
-	// (and its token cost) and hand the question straight to a human.
-	if best < e.genFloor {
-		e.log.Info("below generation floor; skipping AI", "score", best, "floor", e.genFloor, "business_id", msg.BusinessID)
-		return e.degrade(ctx, msg), nil
+	if best < e.threshold {
+		e.log.Info("low confidence; handing off to a human", "score", best, "business_id", msg.BusinessID)
+		return e.handoff(ctx, msg), nil
 	}
 
 	answer, err := e.ai.GenerateReply(ctx, msg.Text, matches)
 	if err != nil {
-		// Every AI provider failed (e.g. quota): send the fallback and flag it.
-		e.log.Error("generate reply failed; degrading", "error", err, "business_id", msg.BusinessID)
-		return e.degrade(ctx, msg), nil
+		// Every AI provider failed (e.g. quota): hand off and flag it.
+		e.log.Error("generate reply failed; handing off", "error", err, "business_id", msg.BusinessID)
+		return e.handoff(ctx, msg), nil
 	}
 
-	var matchedFAQID *int64
-	if len(matches) > 0 {
-		matchedFAQID = &matches[0].FAQID
-	}
-
-	reply := Reply{
-		Text:         answer,
-		Answered:     answered,
-		Confidence:   best,
-		MatchedFAQID: matchedFAQID,
-	}
-
-	e.record(ctx, msg, reply.Text, reply.MatchedFAQID, reply.Confidence, reply.Answered)
+	matchedFAQID := &matches[0].FAQID
+	reply := Reply{Text: answer, Answered: true, Confidence: best, MatchedFAQID: matchedFAQID}
+	e.record(ctx, msg, answer, matchedFAQID, best, true)
 	return reply, nil
 }
 
-// degrade records the question as unanswered (so an admin sees it) and returns
-// the per-business fallback message. Used when a provider is unavailable.
-func (e *Engine) degrade(ctx context.Context, msg Message) Reply {
+// handoff records the question as unanswered (so an admin sees it) and returns
+// the per-business fallback message for the customer. Used whenever the bot
+// can't confidently answer — low confidence, or a provider being unavailable.
+func (e *Engine) handoff(ctx context.Context, msg Message) Reply {
 	e.record(ctx, msg, "", nil, 0, false)
 	return Reply{Text: e.fallback.Fallback(ctx, msg.BusinessID), Answered: false}
 }

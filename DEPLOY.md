@@ -69,12 +69,10 @@ Use the included `render.yaml` (New → Blueprint → pick the repo), or create 
 Leave `ASKDESK_REDIS_URL` **unset** (→ all-in-one). Don't set `PORT` or
 `ASKDESK_PUBLIC_URL` — the app uses Render's `PORT` and `RENDER_EXTERNAL_URL`.
 
-**Optional — save AI tokens:** set `ASKDESK_GENERATION_FLOOR` (0–1) to skip the
-Gemini call whenever the best FAQ match scores below it, sending the question
-straight to the human queue instead. `0` (default) never skips — every question
-goes to the AI. Set it to `0.75` (the confidence threshold) to skip AI on any
-question no FAQ answers well; the customer gets the fallback message until an
-admin replies.
+The bot only answers when a FAQ matches confidently; otherwise it skips the AI
+(saving tokens) and hands off — a clear message to the customer plus a flag in
+the pending queue. Customise that message ("Busy / fallback message") on the
+`/edit` settings page.
 
 Deploy. On first boot the app connects to Supabase and **runs migrations
 automatically** (they're embedded in the binary). Check `/healthz` → `{"status":"ok"}`.
