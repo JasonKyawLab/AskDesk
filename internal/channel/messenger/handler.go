@@ -9,7 +9,9 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"sync"
 
+	"github.com/JasonKyawLab/AskDesk/internal/channel/chatui"
 	"github.com/JasonKyawLab/AskDesk/internal/core"
 )
 
@@ -20,33 +22,46 @@ type Submitter interface {
 	Submit(ctx context.Context, msg core.Message, replyTo string) error
 }
 
+// ProfileFetcher resolves a PSID to a display name so the admin inbox shows who
+// sent a Messenger message. nil disables name lookup (inbox shows no name).
+type ProfileFetcher interface {
+	GetProfile(ctx context.Context, psid string) (string, error)
+}
+
 // Handler is the Messenger webhook endpoint. GET requests are Facebook's
 // subscription verification handshake; POST requests carry messaging events,
 // which are signature-verified, normalized, and submitted to the engine.
 type Handler struct {
 	submitter   Submitter
-	menu        MenuStore     // nil disables the button menu
-	menuClient  MenuClient    // nil disables the button menu
-	settings    SettingsStore // nil uses built-in default copy
+	menu        MenuStore      // nil disables the button menu
+	menuClient  MenuClient     // nil disables the button menu
+	settings    SettingsStore  // nil uses built-in default copy
+	profiles    ProfileFetcher // nil disables customer-name lookup
 	businessID  int64
 	appSecret   string // verifies X-Hub-Signature-256; empty disables verification (dev only)
 	verifyToken string // echoed challenge token for the GET handshake
 	log         *slog.Logger
+
+	nameMu sync.Mutex
+	names  map[string]string // PSID -> display name, cached to avoid repeat lookups
 }
 
 // NewHandler builds the webhook handler. An empty appSecret disables signature
-// verification (development only). menu, menuClient, and settings may be nil,
-// which disables the button menu (free-typed questions still reach the engine).
-func NewHandler(submitter Submitter, menu MenuStore, menuClient MenuClient, settings SettingsStore, businessID int64, appSecret, verifyToken string, log *slog.Logger) *Handler {
+// verification (development only). menu, menuClient, settings, and profiles may
+// be nil, which disables those features (free-typed questions still reach the
+// engine).
+func NewHandler(submitter Submitter, menu MenuStore, menuClient MenuClient, settings SettingsStore, profiles ProfileFetcher, businessID int64, appSecret, verifyToken string, log *slog.Logger) *Handler {
 	return &Handler{
 		submitter:   submitter,
 		menu:        menu,
 		menuClient:  menuClient,
 		settings:    settings,
+		profiles:    profiles,
 		businessID:  businessID,
 		appSecret:   appSecret,
 		verifyToken: verifyToken,
 		log:         log,
+		names:       make(map[string]string),
 	}
 }
 
@@ -139,7 +154,7 @@ func (h *Handler) receive(w http.ResponseWriter, r *http.Request) {
 				continue
 
 			// Greetings open the menu instead of spending an AI call.
-			case h.menuEnabled() && isGreeting(m.Message.Text):
+			case h.menuEnabled() && chatui.IsGreeting(m.Message.Text):
 				h.showMainMenu(r.Context(), sender)
 
 			// Free-typed questions flow to the engine.
@@ -148,6 +163,7 @@ func (h *Handler) receive(w http.ResponseWriter, r *http.Request) {
 					BusinessID: h.businessID,
 					Channel:    core.ChannelMessenger,
 					UserID:     sender,
+					UserName:   h.lookupName(r.Context(), sender),
 					Text:       m.Message.Text,
 				}
 				if err := h.submitter.Submit(r.Context(), msg, sender); err != nil {
@@ -157,6 +173,30 @@ func (h *Handler) receive(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	w.WriteHeader(http.StatusOK)
+}
+
+// lookupName resolves a PSID to a display name (cached). Returns "" when name
+// lookup is disabled or the profile can't be fetched — the inbox then simply
+// shows no name, exactly as before.
+func (h *Handler) lookupName(ctx context.Context, psid string) string {
+	if h.profiles == nil {
+		return ""
+	}
+	h.nameMu.Lock()
+	name, ok := h.names[psid]
+	h.nameMu.Unlock()
+	if ok {
+		return name
+	}
+	name, err := h.profiles.GetProfile(ctx, psid)
+	if err != nil {
+		h.log.Warn("messenger: profile lookup failed", "error", err)
+		return ""
+	}
+	h.nameMu.Lock()
+	h.names[psid] = name
+	h.nameMu.Unlock()
+	return name
 }
 
 // validSignature checks the X-Hub-Signature-256 HMAC over the raw body.

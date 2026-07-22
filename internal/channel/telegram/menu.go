@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/JasonKyawLab/AskDesk/internal/channel/chatui"
 	"github.com/JasonKyawLab/AskDesk/internal/store"
 )
 
@@ -30,40 +31,6 @@ const (
 	cbMain = "m"
 	cbAsk  = "ask"
 )
-
-const (
-	defaultWelcome = "👋 Welcome! Pick a topic below, or just type your question."
-	defaultAsk     = "💬 Type your question below — I'll answer right away, and if I can't, our team will follow up here."
-)
-
-// welcomeText returns the business's configured welcome message (or the default).
-func (h *Handler) welcomeText(ctx context.Context) string {
-	if h.settings != nil {
-		if s, err := h.settings.Settings(ctx, h.businessID); err == nil && s.WelcomeMessage != "" {
-			return s.WelcomeMessage
-		}
-	}
-	return defaultWelcome
-}
-
-// askText returns the business's configured ask prompt (or the default).
-func (h *Handler) askText(ctx context.Context) string {
-	if h.settings != nil {
-		if s, err := h.settings.Settings(ctx, h.businessID); err == nil && s.AskPrompt != "" {
-			return s.AskPrompt
-		}
-	}
-	return defaultAsk
-}
-
-// isGreeting reports whether text should open the menu instead of the AI.
-func isGreeting(text string) bool {
-	switch strings.ToLower(strings.TrimSpace(text)) {
-	case "/start", "/menu", "start", "menu", "hi", "hello", "hey":
-		return true
-	}
-	return false
-}
 
 func (h *Handler) menusEnabled() bool {
 	return h.menu != nil && h.menuClient != nil
@@ -144,7 +111,7 @@ func (h *Handler) mainMenu(ctx context.Context, fromID int64) (string, Keyboard,
 	if h.panel != nil && h.panel.isAdmin(ctx, fromID) {
 		kb = append(kb, []Button{{Text: "🛠 Admin panel", Data: cbPanel}})
 	}
-	return h.welcomeText(ctx), kb, nil
+	return chatui.Welcome(ctx, h.settings, h.businessID), kb, nil
 }
 
 // categoryScreen lists a category's questions, one per row.
@@ -178,7 +145,7 @@ func (h *Handler) answerScreen(ctx context.Context, id int64) (string, Keyboard,
 
 // askScreen invites free text (which flows to the AI as usual).
 func (h *Handler) askScreen(ctx context.Context) (string, Keyboard) {
-	return h.askText(ctx), Keyboard{{{Text: "🏠 Main menu", Data: cbMain}}}
+	return chatui.Ask(ctx, h.settings, h.businessID), Keyboard{{{Text: "🏠 Main menu", Data: cbMain}}}
 }
 
 // truncLabel keeps button labels within Telegram's comfortable display width.
