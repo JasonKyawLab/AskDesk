@@ -37,9 +37,6 @@ type Config struct {
 
 	// Web API.
 	CORSOrigins []string // allowed origins for the /api/v1 endpoints ("*" = any)
-
-	// Reply engine tuning.
-	GenerationFloor float64 // skip the AI call when the best FAQ score is below this (0 = never skip)
 }
 
 // Load reads configuration from the environment, applying development-friendly
@@ -82,17 +79,6 @@ func Load() (*Config, error) {
 			return nil, fmt.Errorf("ASKDESK_BUSINESS_ID must be a number: %w", err)
 		}
 		cfg.BusinessID = id
-	}
-
-	if v := getEnv("ASKDESK_GENERATION_FLOOR", ""); v != "" {
-		floor, err := strconv.ParseFloat(v, 64)
-		if err != nil {
-			return nil, fmt.Errorf("ASKDESK_GENERATION_FLOOR must be a number: %w", err)
-		}
-		if floor < 0 || floor > 1 {
-			return nil, fmt.Errorf("ASKDESK_GENERATION_FLOOR out of range (0–1): %v", floor)
-		}
-		cfg.GenerationFloor = floor
 	}
 
 	return cfg, nil

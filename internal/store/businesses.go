@@ -28,7 +28,7 @@ type BusinessSettings struct {
 // Defaults (used when a field is empty/zero).
 const (
 	DefaultWelcome         = "👋 Welcome to {name} support! Pick a topic below, or just type your question."
-	DefaultFallback        = "Sorry, I'm a bit busy right now — please try again in a moment, or leave your message and our team will follow up."
+	DefaultFallback        = "Thanks for your message! I couldn't answer that one myself, so I've passed it to our team — we'll follow up here soon."
 	DefaultAsk             = "💬 Type your question below — I'll answer right away, and if I can't, our team will follow up here."
 	DefaultAskRatePerMin   = 10
 	DefaultAskGlobalPerMin = 60
