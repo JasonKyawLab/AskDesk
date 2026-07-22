@@ -25,6 +25,12 @@ type Config struct {
 	TelegramWebhookSecret string // verified on every Telegram webhook request
 	TelegramAPIURL        string // override Bot API base URL (empty = Telegram's)
 
+	// Messenger channel.
+	MessengerPageToken   string // page access token; empty disables the Messenger webhook
+	MessengerAppSecret   string // verifies X-Hub-Signature-256 on each request
+	MessengerVerifyToken string // echoed challenge token for the subscription handshake
+	MessengerAPIURL      string // override Graph API base URL (empty = Facebook's)
+
 	// Magic-link FAQ editor.
 	MagicLinkSecret string // HMAC key for signing edit links; empty disables the editor
 	PublicURL       string // public base URL used to build magic links
@@ -50,6 +56,10 @@ func Load() (*Config, error) {
 		TelegramBotToken:      getEnv("ASKDESK_TELEGRAM_BOT_TOKEN", ""),
 		TelegramWebhookSecret: getEnv("ASKDESK_TELEGRAM_WEBHOOK_SECRET", ""),
 		TelegramAPIURL:        getEnv("ASKDESK_TELEGRAM_API_URL", ""),
+		MessengerPageToken:    getEnv("ASKDESK_MESSENGER_PAGE_TOKEN", ""),
+		MessengerAppSecret:    getEnv("ASKDESK_MESSENGER_APP_SECRET", ""),
+		MessengerVerifyToken:  getEnv("ASKDESK_MESSENGER_VERIFY_TOKEN", ""),
+		MessengerAPIURL:       getEnv("ASKDESK_MESSENGER_API_URL", ""),
 		MagicLinkSecret:       getEnv("ASKDESK_MAGIC_LINK_SECRET", ""),
 		// PublicURL falls back to Render's auto-injected RENDER_EXTERNAL_URL.
 		PublicURL:   getEnv("ASKDESK_PUBLIC_URL", getEnv("RENDER_EXTERNAL_URL", "")),

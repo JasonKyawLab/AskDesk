@@ -24,6 +24,7 @@ import (
 	"github.com/JasonKyawLab/AskDesk/internal/admin"
 	"github.com/JasonKyawLab/AskDesk/internal/app"
 	"github.com/JasonKyawLab/AskDesk/internal/auth"
+	"github.com/JasonKyawLab/AskDesk/internal/channel/messenger"
 	"github.com/JasonKyawLab/AskDesk/internal/channel/telegram"
 	"github.com/JasonKyawLab/AskDesk/internal/config"
 	"github.com/JasonKyawLab/AskDesk/internal/core"
@@ -88,22 +89,15 @@ func run() error {
 		srv.Mount("/api/v1/admin/", webapi.NewAdmin(adminStore, deliverer, bizStore, log))
 		log.Info("web api enabled")
 
-		// Telegram channel.
-		if cfg.TelegramBotToken != "" {
-			var clientOpts []telegram.ClientOption
-			if cfg.TelegramAPIURL != "" {
-				clientOpts = append(clientOpts, telegram.WithBaseURL(cfg.TelegramAPIURL))
-			}
-			client := telegram.NewClient(cfg.TelegramBotToken, clientOpts...)
-			panel := telegram.NewAdminPanel(adminStore, client, deliverer, signer, cfg.PublicURL, cfg.BusinessID, log)
-
-			// Submitter: run inline (all-in-one) or enqueue to the worker (queue mode).
+		// Chat channels (Telegram, Messenger) share one submitter: run the engine
+		// inline (all-in-one) or enqueue to the worker (queue mode).
+		if cfg.TelegramBotToken != "" || cfg.MessengerPageToken != "" {
 			var submitter telegram.Submitter
 			if cfg.RedisURL == "" {
 				adminSvc := admin.NewService(adminStore, deliverer, signer, cfg.PublicURL)
 				dispatcher := app.NewDispatcher(engine, adminSvc, deliverer, log)
 				submitter = app.NewSyncSubmitter(dispatcher)
-				log.Info("telegram: all-in-one mode")
+				log.Info("chat channels: all-in-one mode")
 			} else {
 				enq, err := queue.NewEnqueuer(cfg.RedisURL)
 				if err != nil {
@@ -111,14 +105,34 @@ func run() error {
 				}
 				defer enq.Close()
 				submitter = enq
-				log.Info("telegram: queue mode")
+				log.Info("chat channels: queue mode")
 			}
 
-			srv.Mount("POST /webhook/telegram",
-				telegram.NewHandler(submitter, faqStore, client, panel, bizStore, cfg.BusinessID, cfg.TelegramWebhookSecret, log))
-			log.Info("telegram webhook enabled", "business_id", cfg.BusinessID)
-			if cfg.TelegramWebhookSecret == "" {
-				log.Warn("telegram webhook secret is empty; requests are not verified")
+			// Telegram channel.
+			if cfg.TelegramBotToken != "" {
+				var clientOpts []telegram.ClientOption
+				if cfg.TelegramAPIURL != "" {
+					clientOpts = append(clientOpts, telegram.WithBaseURL(cfg.TelegramAPIURL))
+				}
+				client := telegram.NewClient(cfg.TelegramBotToken, clientOpts...)
+				panel := telegram.NewAdminPanel(adminStore, client, deliverer, signer, cfg.PublicURL, cfg.BusinessID, log)
+
+				srv.Mount("POST /webhook/telegram",
+					telegram.NewHandler(submitter, faqStore, client, panel, bizStore, cfg.BusinessID, cfg.TelegramWebhookSecret, log))
+				log.Info("telegram webhook enabled", "business_id", cfg.BusinessID)
+				if cfg.TelegramWebhookSecret == "" {
+					log.Warn("telegram webhook secret is empty; requests are not verified")
+				}
+			}
+
+			// Messenger channel.
+			if cfg.MessengerPageToken != "" {
+				srv.Mount("/webhook/messenger",
+					messenger.NewHandler(submitter, cfg.BusinessID, cfg.MessengerAppSecret, cfg.MessengerVerifyToken, log))
+				log.Info("messenger webhook enabled", "business_id", cfg.BusinessID)
+				if cfg.MessengerAppSecret == "" {
+					log.Warn("messenger app secret is empty; requests are not verified")
+				}
 			}
 		}
 
