@@ -155,9 +155,11 @@ Message your Page — the bot answers from your FAQs, and anything it can't answ
 lands in the shared pending queue. Replies from any admin surface route back to
 the customer in Messenger.
 
-> Note: FAQ text Q&A and human handoff work out of the box. There's no in-chat
-> button menu or `/admin` panel on Messenger (those are Telegram-only) — manage
-> FAQs/settings and answer questions from the web `/edit` page or the admin API.
+> Note: On first boot AskDesk installs a **Get Started** button and a persistent
+> menu. Customers get a Telegram-style tappable menu — greet the bot (or tap
+> **Browse topics**) → category chips → a card per question → **See answer** —
+> plus free-typed Q&A and human handoff. The `/admin` panel stays Telegram-only;
+> manage FAQs/settings and answer questions from the web `/edit` page or admin API.
 
 ---
 

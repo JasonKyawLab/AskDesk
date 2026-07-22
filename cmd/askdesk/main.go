@@ -127,8 +127,19 @@ func run() error {
 
 			// Messenger channel.
 			if cfg.MessengerPageToken != "" {
+				var msgOpts []messenger.ClientOption
+				if cfg.MessengerAPIURL != "" {
+					msgOpts = append(msgOpts, messenger.WithBaseURL(cfg.MessengerAPIURL))
+				}
+				mClient := messenger.NewClient(cfg.MessengerPageToken, msgOpts...)
+				// Best-effort: install the Get Started button + persistent menu so
+				// the bot has a Telegram-style "Browse topics" entry point.
+				if err := mClient.SetupProfile(context.Background(), "MENU", "📋 Browse topics", "💬 Ask a question", "ASK"); err != nil {
+					log.Warn("messenger: profile setup failed", "error", err)
+				}
+
 				srv.Mount("/webhook/messenger",
-					messenger.NewHandler(submitter, cfg.BusinessID, cfg.MessengerAppSecret, cfg.MessengerVerifyToken, log))
+					messenger.NewHandler(submitter, faqStore, mClient, bizStore, cfg.BusinessID, cfg.MessengerAppSecret, cfg.MessengerVerifyToken, log))
 				log.Info("messenger webhook enabled", "business_id", cfg.BusinessID)
 				if cfg.MessengerAppSecret == "" {
 					log.Warn("messenger app secret is empty; requests are not verified")

@@ -25,6 +25,9 @@ type Submitter interface {
 // which are signature-verified, normalized, and submitted to the engine.
 type Handler struct {
 	submitter   Submitter
+	menu        MenuStore     // nil disables the button menu
+	menuClient  MenuClient    // nil disables the button menu
+	settings    SettingsStore // nil uses built-in default copy
 	businessID  int64
 	appSecret   string // verifies X-Hub-Signature-256; empty disables verification (dev only)
 	verifyToken string // echoed challenge token for the GET handshake
@@ -32,10 +35,14 @@ type Handler struct {
 }
 
 // NewHandler builds the webhook handler. An empty appSecret disables signature
-// verification (development only).
-func NewHandler(submitter Submitter, businessID int64, appSecret, verifyToken string, log *slog.Logger) *Handler {
+// verification (development only). menu, menuClient, and settings may be nil,
+// which disables the button menu (free-typed questions still reach the engine).
+func NewHandler(submitter Submitter, menu MenuStore, menuClient MenuClient, settings SettingsStore, businessID int64, appSecret, verifyToken string, log *slog.Logger) *Handler {
 	return &Handler{
 		submitter:   submitter,
+		menu:        menu,
+		menuClient:  menuClient,
+		settings:    settings,
 		businessID:  businessID,
 		appSecret:   appSecret,
 		verifyToken: verifyToken,
@@ -52,9 +59,15 @@ type webhookEvent struct {
 				ID string `json:"id"`
 			} `json:"sender"`
 			Message *struct {
-				Text   string `json:"text"`
-				IsEcho bool   `json:"is_echo"`
+				Text       string `json:"text"`
+				IsEcho     bool   `json:"is_echo"`
+				QuickReply *struct {
+					Payload string `json:"payload"`
+				} `json:"quick_reply"`
 			} `json:"message"`
+			Postback *struct {
+				Payload string `json:"payload"`
+			} `json:"postback"`
 		} `json:"messaging"`
 	} `json:"entry"`
 }
@@ -108,18 +121,38 @@ func (h *Handler) receive(w http.ResponseWriter, r *http.Request) {
 
 	for _, entry := range ev.Entry {
 		for _, m := range entry.Messaging {
-			// Skip non-text events and our own echoed messages.
-			if m.Message == nil || m.Message.IsEcho || m.Message.Text == "" || m.Sender.ID == "" {
+			sender := m.Sender.ID
+			if sender == "" {
 				continue
 			}
-			msg := core.Message{
-				BusinessID: h.businessID,
-				Channel:    core.ChannelMessenger,
-				UserID:     m.Sender.ID,
-				Text:       m.Message.Text,
-			}
-			if err := h.submitter.Submit(r.Context(), msg, m.Sender.ID); err != nil {
-				h.log.Error("messenger webhook: submit failed", "error", err, "business_id", h.businessID)
+			switch {
+			// Button taps: Get Started, persistent menu, and card buttons arrive
+			// as postbacks; category/nav chips as quick replies. Both are handled
+			// inline (DB reads + a Send API call, no AI).
+			case m.Postback != nil && m.Postback.Payload != "" && h.menuEnabled():
+				h.handleMenu(r.Context(), sender, m.Postback.Payload)
+			case m.Message != nil && m.Message.QuickReply != nil && m.Message.QuickReply.Payload != "" && h.menuEnabled():
+				h.handleMenu(r.Context(), sender, m.Message.QuickReply.Payload)
+
+			// Skip our own echoed messages and non-text events.
+			case m.Message == nil || m.Message.IsEcho || m.Message.Text == "":
+				continue
+
+			// Greetings open the menu instead of spending an AI call.
+			case h.menuEnabled() && isGreeting(m.Message.Text):
+				h.showMainMenu(r.Context(), sender)
+
+			// Free-typed questions flow to the engine.
+			default:
+				msg := core.Message{
+					BusinessID: h.businessID,
+					Channel:    core.ChannelMessenger,
+					UserID:     sender,
+					Text:       m.Message.Text,
+				}
+				if err := h.submitter.Submit(r.Context(), msg, sender); err != nil {
+					h.log.Error("messenger webhook: submit failed", "error", err, "business_id", h.businessID)
+				}
 			}
 		}
 	}
