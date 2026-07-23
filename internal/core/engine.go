@@ -47,8 +47,10 @@ const (
 	// defaultTopK is how many FAQ matches to retrieve for context.
 	defaultTopK = 4
 	// defaultConfidenceThreshold is the minimum best-match score to treat an
-	// answer as confident; below it, the question is flagged for an admin.
-	defaultConfidenceThreshold = 0.75
+	// answer as confident; below it, the bot skips the AI and hands off to a
+	// human. Tuned to 0.6: relevant, naturally-phrased questions (including
+	// multi-part ones) still answer, while genuinely unrelated ones hand off.
+	defaultConfidenceThreshold = 0.6
 )
 
 // Engine is the shared reply engine. It is channel-agnostic and holds no state.
