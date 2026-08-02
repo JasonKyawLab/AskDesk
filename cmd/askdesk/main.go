@@ -73,7 +73,10 @@ func run() error {
 		bizStore := store.NewBusinesses(pool)
 		adminStore := store.NewAdmins(pool)
 		webReplies := store.NewWebReplies(pool)
-		engine := core.NewEngine(faqStore, genProvider, store.NewConversations(pool), bizStore, log)
+		engine := core.NewEngine(faqStore, genProvider, store.NewConversations(pool), bizStore, log, cfg.AIEnabled)
+		if !cfg.AIEnabled {
+			log.Info("FAQ-only mode: AI disabled, free-typed questions go to a human")
+		}
 		deliverer := app.NewChannelDeliverer(cfg, webReplies)
 
 		var signer *auth.Signer

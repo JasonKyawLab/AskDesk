@@ -59,6 +59,7 @@ func run() error {
 		store.NewConversations(pool),
 		store.NewBusinesses(pool),
 		log,
+		cfg.AIEnabled,
 	)
 
 	var signer *auth.Signer

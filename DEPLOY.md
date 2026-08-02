@@ -74,6 +74,13 @@ The bot only answers when a FAQ matches confidently; otherwise it skips the AI
 the pending queue. Customise that message ("Busy / fallback message") on the
 `/edit` settings page.
 
+**FAQ-only mode (no AI):** AI is **on by default** (unset = enabled). Set
+`ASKDESK_AI_ENABLED=false` to run without any AI.
+The button menu (tap category → question → answer) still works fully; free-typed
+questions skip the AI entirely and go straight to a human (answer via Telegram /
+the web page / the admin API). No Gemini calls happen at runtime, so the bot runs
+without a working `ASKDESK_GEMINI_API_KEY`.
+
 Deploy. On first boot the app connects to Supabase and **runs migrations
 automatically** (they're embedded in the binary). Check `/healthz` → `{"status":"ok"}`.
 

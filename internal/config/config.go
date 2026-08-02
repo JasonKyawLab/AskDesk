@@ -37,6 +37,9 @@ type Config struct {
 
 	// Web API.
 	CORSOrigins []string // allowed origins for the /api/v1 endpoints ("*" = any)
+
+	// Reply engine.
+	AIEnabled bool // false = FAQ-only mode: no AI, free-typed questions go to a human
 }
 
 // Load reads configuration from the environment, applying development-friendly
@@ -61,6 +64,7 @@ func Load() (*Config, error) {
 		// PublicURL falls back to Render's auto-injected RENDER_EXTERNAL_URL.
 		PublicURL:   getEnv("ASKDESK_PUBLIC_URL", getEnv("RENDER_EXTERNAL_URL", "")),
 		CORSOrigins: splitCSV(getEnv("ASKDESK_CORS_ORIGINS", "*")),
+		AIEnabled:   getEnvBool("ASKDESK_AI_ENABLED", true),
 	}
 
 	// Port falls back to PORT (which Render and many PaaS hosts inject).
@@ -105,4 +109,20 @@ func getEnv(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+// getEnvBool reads a boolean env var. Anything other than a clear "false"/"0"/
+// "no"/"off" (case-insensitive) keeps the fallback's truthiness sensible:
+// unset → fallback; set to a false-y word → false; anything else → true.
+func getEnvBool(key string, fallback bool) bool {
+	v, ok := os.LookupEnv(key)
+	if !ok || strings.TrimSpace(v) == "" {
+		return fallback
+	}
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "false", "0", "no", "off":
+		return false
+	default:
+		return true
+	}
 }
