@@ -52,7 +52,7 @@ type fakeFallback struct{ msg string }
 func (f fakeFallback) Fallback(context.Context, int64) string { return f.msg }
 
 func newTestEngine(r Retriever, ai AIProvider, s ConversationStore) *Engine {
-	return NewEngine(r, ai, s, fakeFallback{"fallback"}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	return NewEngine(r, ai, s, fakeFallback{"fallback"}, slog.New(slog.NewTextHandler(io.Discard, nil)), true)
 }
 
 // --- tests ---
@@ -164,6 +164,29 @@ func TestGenerateCustomerReply_LowConfidenceHandsOffWithoutAI(t *testing.T) {
 	}
 	if !store.enqueued {
 		t.Error("a handed-off question must be enqueued for a human")
+	}
+}
+
+func TestGenerateCustomerReply_FAQOnlyModeSkipsAIAndRetrieval(t *testing.T) {
+	retriever := &fakeRetriever{matches: []Match{{FAQID: 1, Answer: "x", Score: 0.99}}}
+	ai := &fakeAI{answer: "should not be used"}
+	store := &fakeStore{}
+	// aiEnabled = false
+	engine := NewEngine(retriever, ai, store, fakeFallback{"fallback"},
+		slog.New(slog.NewTextHandler(io.Discard, nil)), false)
+
+	reply, err := engine.GenerateCustomerReply(context.Background(), Message{BusinessID: 1, Text: "anything"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ai.called {
+		t.Error("FAQ-only mode must not call the AI")
+	}
+	if reply.Answered || reply.Text != "fallback" {
+		t.Errorf("FAQ-only mode should hand off with the fallback, got %+v", reply)
+	}
+	if !store.enqueued {
+		t.Error("FAQ-only free-text question must be queued for a human")
 	}
 }
 

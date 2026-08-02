@@ -23,6 +23,9 @@ self-hosting are the cost advantage, not an afterthought.
 - **Answers only when sure** — the bot replies from the AI only on a confident FAQ
   match; otherwise it skips the AI (no wasted tokens, no guessing) and sends a
   clear handoff message while queuing the question for a human.
+- **AI optional** — AI is **on by default**; set `ASKDESK_AI_ENABLED=false` to run
+  FAQ-only: the tappable menu answers instantly and free-typed questions go
+  straight to a human. No Gemini key, no AI cost, zero hallucination risk.
 - **Cross-channel handoff** — handed-off questions land in one shared inbox with
   the sender's channel + name. Answer from the Telegram `/admin` panel **or** a
   web admin page **or** your own app via the admin API; the reply is routed back

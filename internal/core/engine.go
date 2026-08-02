@@ -61,10 +61,13 @@ type Engine struct {
 	fallback  FallbackProvider
 	log       *slog.Logger
 	threshold float64
+	aiEnabled bool
 }
 
-// NewEngine constructs an Engine.
-func NewEngine(r Retriever, ai AIProvider, store ConversationStore, fallback FallbackProvider, log *slog.Logger) *Engine {
+// NewEngine constructs an Engine. aiEnabled=false runs FAQ-only mode: the button
+// menu still works, but free-typed questions skip the AI and go straight to a
+// human (no Gemini calls at runtime).
+func NewEngine(r Retriever, ai AIProvider, store ConversationStore, fallback FallbackProvider, log *slog.Logger, aiEnabled bool) *Engine {
 	return &Engine{
 		retriever: r,
 		ai:        ai,
@@ -72,6 +75,7 @@ func NewEngine(r Retriever, ai AIProvider, store ConversationStore, fallback Fal
 		fallback:  fallback,
 		log:       log,
 		threshold: defaultConfidenceThreshold,
+		aiEnabled: aiEnabled,
 	}
 }
 
@@ -81,6 +85,12 @@ func NewEngine(r Retriever, ai AIProvider, store ConversationStore, fallback Fal
 // it hands off — a clear message to the customer plus a flag for an admin — so
 // customers are never left with silence or an uncertain guess.
 func (e *Engine) GenerateCustomerReply(ctx context.Context, msg Message) (Reply, error) {
+	// FAQ-only mode: no AI. Free-typed questions go straight to a human (the
+	// button menu, handled in the channel adapters, still answers instantly).
+	if !e.aiEnabled {
+		return e.handoff(ctx, msg), nil
+	}
+
 	matches, err := e.retriever.Search(ctx, msg.BusinessID, msg.Text, defaultTopK)
 	if err != nil {
 		// Retrieval (embedding) is down: hand off gracefully instead of going silent.
