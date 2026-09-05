@@ -73,8 +73,11 @@
 .adk-tg{display:block;text-align:center;margin-top:8px;font-size:13px;color:$A;text-decoration:none}\
 .adk-foot{flex:none;text-align:center;padding:7px;font-size:11px;color:#9a9a9a;border-top:1px solid #eee;background:#fff}\
 .adk-foot a{color:#9a9a9a;text-decoration:none}\
+.adk-acts{display:flex;align-items:center;gap:8px;flex:none}\
+.adk-browse{background:none;border:1px solid rgba(255,255,255,.45);color:#fff;font-size:12px;padding:4px 10px;border-radius:8px;cursor:pointer;white-space:nowrap;line-height:1.2}\
+.adk-browse:hover{background:rgba(255,255,255,.14)}\
 .adk-brand{display:inline-flex;align-items:center;vertical-align:middle;margin-left:2px}\
-.adk-brand svg{height:12px;width:auto;display:block}\
+.adk-brand svg{height:12px;width:auto;display:block;fill:#111}\
 .adk-in{flex:none;display:flex;gap:8px;padding:10px;border-top:1px solid #eee;background:#fff}\
 .adk-in input{flex:1;border:1px solid #ddd;border-radius:10px;padding:9px 11px;font:inherit;font-size:14px}\
 .adk-in button{background:$A;color:#fff;border:0;border-radius:10px;padding:0 14px;font-size:14px;cursor:pointer}\
@@ -90,8 +93,10 @@
   var hdl = el("div", "adk-hdl");
   if (LOGO) { var logo = el("img", "adk-logo"); logo.src = LOGO; logo.alt = ""; hdl.appendChild(logo); }
   var title = el("b", null, "Support"); hdl.appendChild(title);
+  var browse = el("button", "adk-browse", "Browse FAQs"); browse.type = "button";
   var xbtn = el("button", "adk-x", "×");
-  head.appendChild(hdl); head.appendChild(xbtn);
+  var acts = el("div", "adk-acts"); acts.appendChild(browse); acts.appendChild(xbtn);
+  head.appendChild(hdl); head.appendChild(acts);
   var body = el("div", "adk-body");
   var foot = el("div", "adk-foot");
   var form = el("form", "adk-in");
@@ -105,16 +110,21 @@
 
   function showMenu() {
     if (cfg.welcome) addMsg(cfg.welcome, "bot");
-    if (cfg.categories && cfg.categories.length) {
-      var wrap = el("div", "adk-chips");
-      cfg.categories.forEach(function (c) {
-        var chip = el("button", "adk-chip", c); chip.type = "button";
-        chip.onclick = function () { showCategory(c); };
-        wrap.appendChild(chip);
-      });
-      body.appendChild(wrap); body.scrollTop = body.scrollHeight;
-    }
+    showBrowse();
   }
+  // Render the category chips at the bottom of the thread (reused by the
+  // header "Browse FAQs" button so users can jump back without scrolling up).
+  function showBrowse() {
+    if (!cfg.categories || !cfg.categories.length) return;
+    var wrap = el("div", "adk-chips");
+    cfg.categories.forEach(function (c) {
+      var chip = el("button", "adk-chip", c); chip.type = "button";
+      chip.onclick = function () { showCategory(c); };
+      wrap.appendChild(chip);
+    });
+    body.appendChild(wrap); body.scrollTop = body.scrollHeight;
+  }
+  browse.onclick = function () { showBrowse(); };
   function showCategory(name) {
     addMsg(name, "me");
     var cat = faqs.filter(function (c) { return c.name === name; })[0];
