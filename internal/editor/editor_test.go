@@ -66,7 +66,7 @@ func TestHandleReply_DeliversAndResolves(t *testing.T) {
 	signer := auth.NewSigner("k")
 	adm := &fakeAdmin{target: store.UnansweredTarget{Channel: core.ChannelWidget, ReplyTo: "s1"}}
 	del := &fakeDel{}
-	h := NewHandler(fakeFAQs{}, fakeSettings{}, adm, del, signer, false, discardLogger())
+	h := NewHandler(fakeFAQs{}, fakeSettings{}, adm, nil, del, signer, false, discardLogger())
 
 	tok, _ := signer.Sign(auth.Claims{BusinessID: 1, ExpiresAt: time.Now().Add(time.Minute).Unix()})
 	form := url.Values{"id": {"7"}, "message": {"We ship in 2 days."}}
@@ -89,7 +89,7 @@ func TestHandleReply_DeliversAndResolves(t *testing.T) {
 }
 
 func TestHandleReply_NoSessionDenied(t *testing.T) {
-	h := NewHandler(fakeFAQs{}, fakeSettings{}, &fakeAdmin{}, &fakeDel{}, auth.NewSigner("k"), false, discardLogger())
+	h := NewHandler(fakeFAQs{}, fakeSettings{}, &fakeAdmin{}, nil, &fakeDel{}, auth.NewSigner("k"), false, discardLogger())
 	req := httptest.NewRequest(http.MethodPost, "/edit/reply", strings.NewReader("id=1&message=hi"))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	rec := httptest.NewRecorder()

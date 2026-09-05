@@ -223,15 +223,26 @@ Any website can add the chat bubble with one line — no build step:
 ```
 
 Optional attributes: `data-api` (API host, defaults to the script's origin),
-`data-color` (accent colour), `data-logo` (a logo image URL for the header),
-`data-position` (`left` or `right`, default `right`), `data-telegram` (a
-`t.me/...` link for the "continue on Telegram" handoff). Preview it at
-`https://<your-app>/widget/demo`.
+`data-color` (header colour), `data-accent` (buttons/bubbles/launcher — defaults
+to `data-color`), `data-bg` (chat background), `data-logo` (a logo image URL for
+the header), `data-position` (`left` or `right`, default `right`),
+`data-telegram` (a `t.me/...` link for the "continue on Telegram" handoff).
+Preview it at `https://<your-app>/widget/demo`.
 
-**Contact-gate (lead capture):** set `ASKDESK_REQUIRE_CONTACT=true` and the widget
-asks for an email/phone **before** an AI answer, saving it as a lead — great for
-lead-gen (e.g. an education agency). Default `false` (a support bot answers
-without asking). Per-business by virtue of per-deployment env.
+**Contact capture (lead capture):** set `ASKDESK_CONTACT_CAPTURE` to one of:
+
+| Value | Behaviour | Good for |
+|---|---|---|
+| `off` (default) | Never asks for contact — the bot just answers. | Pure support bots. |
+| `always` | Asks for email/phone **before the first answer**; nothing is answered until the visitor shares contact. | Lead-gen (e.g. an education agency), or any public site that wants every conversation attributed — MiniPOS runs this. |
+| `handoff` | Answers normally, and asks for contact **only when the AI can't answer** (`answered:false`), so a human can follow up by email. | Sites that want frictionless answers but still catch the questions the bot misses. |
+
+Set `ASKDESK_REQUIRE_CONTACT=true` is a legacy alias for `always`. The mode is
+per-business by virtue of per-deployment env, and the widget reads it from
+`/api/v1/config` (`contact_capture`) — no rebuild needed. Captured leads appear in
+the **Leads** section of the `/edit` page (for operators with no backend) and via
+**`GET /api/v1/admin/leads`** (for those building their own UI). `/lead` is
+rate-limited (5/min per visitor, 30/min per business).
 
 ### Answering web customers (handoff)
 When the AI can't answer a web question, it's queued like any other. Reply to it
@@ -255,6 +266,7 @@ backend**, never a browser (the admin key must stay server-side).
 |---|---|
 | `GET /api/v1/admin/stats` | `{total, answered, unanswered}` |
 | `GET /api/v1/admin/pending` | `{pending: [{id, question, customer, created_at}]}` |
+| `GET /api/v1/admin/leads` | `{leads: [{session_id, name, email, phone}]}` — widget contact-gate captures |
 | `POST /api/v1/admin/reply` | body `{id, message}` → delivers to the customer's channel, resolves |
 | `POST /api/v1/admin/dismiss` | body `{id}` → resolve without replying |
 

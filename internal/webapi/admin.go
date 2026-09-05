@@ -30,23 +30,30 @@ type AdminAuth interface {
 	IDByAdminKey(ctx context.Context, adminKey string) (int64, error)
 }
 
+// AdminLeadStore lists captured widget leads (nil returns an empty list).
+type AdminLeadStore interface {
+	List(ctx context.Context, businessID int64, limit int) ([]store.Lead, error)
+}
+
 // AdminHandler serves the privileged /api/v1/admin endpoints so a frontend can
 // build its own support inbox. It is authenticated by an X-Admin-Key header
 // (separate from the public api_key) and intentionally sends NO CORS headers —
 // call it from a backend, never directly from a browser.
 type AdminHandler struct {
 	store     AdminStore
+	leads     AdminLeadStore
 	deliverer Deliverer
 	auth      AdminAuth
 	log       *slog.Logger
 	mux       *http.ServeMux
 }
 
-// NewAdmin builds the admin API handler.
-func NewAdmin(s AdminStore, deliverer Deliverer, auth AdminAuth, log *slog.Logger) *AdminHandler {
-	h := &AdminHandler{store: s, deliverer: deliverer, auth: auth, log: log, mux: http.NewServeMux()}
+// NewAdmin builds the admin API handler. leads may be nil.
+func NewAdmin(s AdminStore, leads AdminLeadStore, deliverer Deliverer, auth AdminAuth, log *slog.Logger) *AdminHandler {
+	h := &AdminHandler{store: s, leads: leads, deliverer: deliverer, auth: auth, log: log, mux: http.NewServeMux()}
 	h.mux.HandleFunc("GET /api/v1/admin/stats", h.handleStats)
 	h.mux.HandleFunc("GET /api/v1/admin/pending", h.handlePending)
+	h.mux.HandleFunc("GET /api/v1/admin/leads", h.handleLeads)
 	h.mux.HandleFunc("POST /api/v1/admin/reply", h.handleReply)
 	h.mux.HandleFunc("POST /api/v1/admin/dismiss", h.handleDismiss)
 	return h
@@ -97,6 +104,30 @@ func (h *AdminHandler) handlePending(w http.ResponseWriter, r *http.Request) {
 		out = append(out, pendingItem{ID: it.ID, Question: it.Question, Customer: it.UserName, Channel: string(it.Channel), CreatedAt: created})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"pending": out})
+}
+
+type leadItem struct {
+	SessionID string `json:"session_id"`
+	Name      string `json:"name"`
+	Email     string `json:"email"`
+	Phone     string `json:"phone"`
+}
+
+// handleLeads returns the widget-captured contacts so a frontend's own admin UI
+// can show a CRM/leads list.
+func (h *AdminHandler) handleLeads(w http.ResponseWriter, r *http.Request) {
+	out := []leadItem{}
+	if h.leads != nil {
+		items, err := h.leads.List(r.Context(), businessID(r.Context()), 200)
+		if err != nil {
+			h.serverError(w, "leads", err)
+			return
+		}
+		for _, it := range items {
+			out = append(out, leadItem{SessionID: it.SessionID, Name: it.Name, Email: it.Email, Phone: it.Phone})
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"leads": out})
 }
 
 type replyRequest struct {

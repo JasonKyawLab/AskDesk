@@ -204,6 +204,22 @@ func TestAPI_Lead(t *testing.T) {
 	}
 }
 
+func TestAPI_LeadRateLimited(t *testing.T) {
+	h := New(fakeEngine{}, fakeFAQs{}, fakeBiz{valid: "goodkey"}, fakeReplies{}, &fakeLeads{},
+		Options{AllowedOrigins: []string{"*"}}, discardLog())
+	body := `{"session_id":"s","email":"a@b.com"}`
+
+	for i := 0; i < leadPerMin; i++ {
+		if rec := do(h, http.MethodPost, "/api/v1/lead", "goodkey", body); rec.Code != http.StatusOK {
+			t.Fatalf("submission %d = %d, want 200", i+1, rec.Code)
+		}
+	}
+	rec := do(h, http.MethodPost, "/api/v1/lead", "goodkey", body)
+	if rec.Code != http.StatusTooManyRequests {
+		t.Errorf("over-limit submission = %d, want 429", rec.Code)
+	}
+}
+
 func TestAPI_LeadRequiresContact(t *testing.T) {
 	rec := do(newAPI(fakeEngine{}, fakeFAQs{}), http.MethodPost, "/api/v1/lead", "goodkey", `{"session_id":"s1"}`)
 	if rec.Code != http.StatusBadRequest {
@@ -213,11 +229,11 @@ func TestAPI_LeadRequiresContact(t *testing.T) {
 
 func TestAPI_ConfigExposesContactAndSource(t *testing.T) {
 	h := New(fakeEngine{}, fakeFAQs{}, fakeBiz{valid: "goodkey"}, fakeReplies{}, &fakeLeads{},
-		Options{AllowedOrigins: []string{"*"}, SourceURL: "https://example.com/src", RequireContact: true}, discardLog())
+		Options{AllowedOrigins: []string{"*"}, SourceURL: "https://example.com/src", ContactCapture: "handoff"}, discardLog())
 	rec := do(h, http.MethodGet, "/api/v1/config", "goodkey", "")
 	body := rec.Body.String()
-	if !strings.Contains(body, `"require_contact":true`) {
-		t.Errorf("config should expose require_contact: %s", body)
+	if !strings.Contains(body, `"contact_capture":"handoff"`) {
+		t.Errorf("config should expose contact_capture: %s", body)
 	}
 	if !strings.Contains(body, `"source_url":"https://example.com/src"`) {
 		t.Errorf("config should expose source_url: %s", body)

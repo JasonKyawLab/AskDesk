@@ -66,7 +66,24 @@ func adminReq(h *AdminHandler, method, path, key, body string) *httptest.Respons
 }
 
 func newAdmin(s AdminStore, del Deliverer) *AdminHandler {
-	return NewAdmin(s, del, fakeAdminAuth{valid: "adminkey"}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	return NewAdmin(s, nil, del, fakeAdminAuth{valid: "adminkey"}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+}
+
+type fakeAdminLeads struct{ list []store.Lead }
+
+func (f fakeAdminLeads) List(context.Context, int64, int) ([]store.Lead, error) { return f.list, nil }
+
+func TestAdmin_Leads(t *testing.T) {
+	leads := fakeAdminLeads{list: []store.Lead{{Name: "Aung", Email: "a@b.com", Phone: "09"}}}
+	h := NewAdmin(&fakeAdminStore{}, leads, &fakeAdminDeliverer{}, fakeAdminAuth{valid: "adminkey"},
+		slog.New(slog.NewTextHandler(io.Discard, nil)))
+	rec := adminReq(h, http.MethodGet, "/api/v1/admin/leads", "adminkey", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "a@b.com") || !strings.Contains(rec.Body.String(), "Aung") {
+		t.Errorf("leads response missing data: %s", rec.Body.String())
+	}
 }
 
 func TestAdmin_RejectsMissingKey(t *testing.T) {

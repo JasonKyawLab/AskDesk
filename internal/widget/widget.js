@@ -2,16 +2,28 @@
  * Embed with:
  *   <script src="https://YOUR-HOST/widget.js"
  *           data-key="PUBLIC_API_KEY"
- *           data-api="https://YOUR-HOST"     (optional; defaults to this script's origin)
- *           data-color="#0D7A5F"></script>   (optional accent colour)
+ *           data-api="https://YOUR-HOST"   (optional; defaults to this script's origin)
+ *           data-color="#0D7A5F"           (optional; header colour)
+ *           data-accent="#0D7A5F"          (optional; buttons/bubbles/launcher — defaults to data-color)
+ *           data-bg="#F7F7F5"              (optional; chat background)
+ *           data-logo="https://…/logo.png" (optional; header logo)
+ *           data-position="right"          (optional; left | right)
+ *           data-telegram="https://t.me/…" (optional; "continue on Telegram" link)
+ *   ></script>
  */
 (function () {
   "use strict";
-  var script = document.currentScript;
+  // currentScript works for a normal <script> tag; fall back to finding our tag
+  // by src/data-key so it also works when injected (e.g. via next/script).
+  var script = document.currentScript ||
+    document.querySelector('script[src*="widget.js"][data-key]') ||
+    document.querySelector('script[data-key]');
   if (!script) return;
   var API = (script.getAttribute("data-api") || new URL(script.src).origin).replace(/\/+$/, "");
   var KEY = script.getAttribute("data-key") || "";
-  var COLOR = script.getAttribute("data-color") || "#0D7A5F";
+  var COLOR = script.getAttribute("data-color") || "#0D7A5F"; // header
+  var ACCENT = script.getAttribute("data-accent") || COLOR;   // launcher/buttons/user bubbles
+  var BG = script.getAttribute("data-bg") || "#F7F7F5";       // chat background
   var TELEGRAM = script.getAttribute("data-telegram") || ""; // optional t.me/... handoff link
   var LOGO = script.getAttribute("data-logo") || "";         // optional header logo URL
   var POS = script.getAttribute("data-position") === "left" ? "left" : "right";
@@ -23,7 +35,7 @@
   if (!session) { session = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Math.random()).slice(2) + Date.now(); store("askdesk_session", session); }
   var contactDone = store("askdesk_lead_" + KEY) === "1";
 
-  var cfg = { business_name: "Support", welcome: "", require_contact: false, source_url: "", categories: [] };
+  var cfg = { business_name: "Support", welcome: "", contact_capture: "off", source_url: "", categories: [] };
   var faqs = [];        // [{name, faqs:[{id,question,answer}]}]
   var lastReplyId = 0, open = false, sending = false, gating = false, pollTimer = null;
 
@@ -36,7 +48,7 @@
 
   // ---- styles ----
   var css = "\
-.adk-btn{position:fixed;bottom:20px;width:56px;height:56px;border-radius:50%;background:$C;color:#fff;border:0;cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.25);z-index:2147483000;display:flex;align-items:center;justify-content:center;transition:transform .15s}\
+.adk-btn{position:fixed;bottom:20px;width:56px;height:56px;border-radius:50%;background:$A;color:#fff;border:0;cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.25);z-index:2147483000;display:flex;align-items:center;justify-content:center;transition:transform .15s}\
 .adk-btn:hover{transform:scale(1.05)}\
 .adk-btn.adk-right{right:20px}.adk-btn.adk-left{left:20px}\
 .adk-panel{position:fixed;bottom:88px;width:370px;max-width:calc(100vw - 32px);height:560px;max-height:calc(100vh - 120px);background:#fff;border-radius:16px;box-shadow:0 12px 48px rgba(0,0,0,.22);z-index:2147483000;display:none;flex-direction:column;overflow:hidden;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}\
@@ -47,27 +59,30 @@
 .adk-logo{width:26px;height:26px;border-radius:6px;object-fit:cover;background:#fff;flex:none}\
 .adk-hd b{font-size:15px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}\
 .adk-x{background:none;border:0;color:#fff;opacity:.85;font-size:20px;cursor:pointer;line-height:1}\
-.adk-body{flex:1;overflow-y:auto;background:#F7F7F5;padding:14px}\
+.adk-body{flex:1;overflow-y:auto;background:$BG;padding:14px}\
 .adk-msg{max-width:82%;padding:9px 12px;border-radius:14px;font-size:14px;line-height:1.5;margin-bottom:10px;white-space:pre-wrap;word-wrap:break-word}\
 .adk-bot{background:#fff;border:1px solid #ececec;color:#1a1a1a;border-bottom-left-radius:4px}\
-.adk-me{background:$C;color:#fff;margin-left:auto;border-bottom-right-radius:4px}\
+.adk-me{background:$A;color:#fff;margin-left:auto;border-bottom-right-radius:4px}\
 .adk-chips{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:10px}\
 .adk-chip{background:#fff;border:1px solid #ddd;color:#1a1a1a;border-radius:999px;padding:7px 12px;font-size:13px;cursor:pointer}\
-.adk-chip:hover{border-color:$C}\
+.adk-chip:hover{border-color:$A}\
 .adk-form{background:#fff;border:1px solid #ececec;border-radius:12px;padding:12px;margin-bottom:10px}\
 .adk-form p{margin:0 0 8px;font-size:13px;color:#444}\
 .adk-form input{width:100%;box-sizing:border-box;padding:9px;font:inherit;font-size:14px;border:1px solid #ccc;border-radius:8px;margin-bottom:8px}\
-.adk-form button{background:$C;color:#fff;border:0;border-radius:8px;padding:9px 14px;font-size:14px;cursor:pointer;width:100%}\
-.adk-tg{display:block;text-align:center;margin-top:8px;font-size:13px;color:$C;text-decoration:none}\
+.adk-form button{background:$A;color:#fff;border:0;border-radius:8px;padding:9px 14px;font-size:14px;cursor:pointer;width:100%}\
+.adk-tg{display:block;text-align:center;margin-top:8px;font-size:13px;color:$A;text-decoration:none}\
 .adk-foot{flex:none;text-align:center;padding:7px;font-size:11px;color:#9a9a9a;border-top:1px solid #eee;background:#fff}\
 .adk-foot a{color:#9a9a9a;text-decoration:none}\
+.adk-acts{display:flex;align-items:center;gap:8px;flex:none}\
+.adk-browse{background:none;border:1px solid rgba(255,255,255,.45);color:#fff;font-size:12px;padding:4px 10px;border-radius:8px;cursor:pointer;white-space:nowrap;line-height:1.2}\
+.adk-browse:hover{background:rgba(255,255,255,.14)}\
 .adk-brand{display:inline-flex;align-items:center;vertical-align:middle;margin-left:2px}\
-.adk-brand svg{height:12px;width:auto;display:block}\
+.adk-brand svg{height:12px;width:auto;display:block;fill:#111}\
 .adk-in{flex:none;display:flex;gap:8px;padding:10px;border-top:1px solid #eee;background:#fff}\
 .adk-in input{flex:1;border:1px solid #ddd;border-radius:10px;padding:9px 11px;font:inherit;font-size:14px}\
-.adk-in button{background:$C;color:#fff;border:0;border-radius:10px;padding:0 14px;font-size:14px;cursor:pointer}\
+.adk-in button{background:$A;color:#fff;border:0;border-radius:10px;padding:0 14px;font-size:14px;cursor:pointer}\
 .adk-in button:disabled{opacity:.5}\
-".replace(/\$C/g, COLOR);
+".replace(/\$C/g, COLOR).replace(/\$A/g, ACCENT).replace(/\$BG/g, BG);
   var s = document.createElement("style"); s.textContent = css; document.head.appendChild(s);
 
   // ---- DOM ----
@@ -78,8 +93,10 @@
   var hdl = el("div", "adk-hdl");
   if (LOGO) { var logo = el("img", "adk-logo"); logo.src = LOGO; logo.alt = ""; hdl.appendChild(logo); }
   var title = el("b", null, "Support"); hdl.appendChild(title);
+  var browse = el("button", "adk-browse", "Browse FAQs"); browse.type = "button";
   var xbtn = el("button", "adk-x", "×");
-  head.appendChild(hdl); head.appendChild(xbtn);
+  var acts = el("div", "adk-acts"); acts.appendChild(browse); acts.appendChild(xbtn);
+  head.appendChild(hdl); head.appendChild(acts);
   var body = el("div", "adk-body");
   var foot = el("div", "adk-foot");
   var form = el("form", "adk-in");
@@ -93,16 +110,21 @@
 
   function showMenu() {
     if (cfg.welcome) addMsg(cfg.welcome, "bot");
-    if (cfg.categories && cfg.categories.length) {
-      var wrap = el("div", "adk-chips");
-      cfg.categories.forEach(function (c) {
-        var chip = el("button", "adk-chip", c); chip.type = "button";
-        chip.onclick = function () { showCategory(c); };
-        wrap.appendChild(chip);
-      });
-      body.appendChild(wrap); body.scrollTop = body.scrollHeight;
-    }
+    showBrowse();
   }
+  // Render the category chips at the bottom of the thread (reused by the
+  // header "Browse FAQs" button so users can jump back without scrolling up).
+  function showBrowse() {
+    if (!cfg.categories || !cfg.categories.length) return;
+    var wrap = el("div", "adk-chips");
+    cfg.categories.forEach(function (c) {
+      var chip = el("button", "adk-chip", c); chip.type = "button";
+      chip.onclick = function () { showCategory(c); };
+      wrap.appendChild(chip);
+    });
+    body.appendChild(wrap); body.scrollTop = body.scrollHeight;
+  }
+  browse.onclick = function () { showBrowse(); };
   function showCategory(name) {
     addMsg(name, "me");
     var cat = faqs.filter(function (c) { return c.name === name; })[0];
@@ -138,7 +160,11 @@
   function ask(text) {
     var pending = addMsg("…", "bot"); sending = true; send.disabled = true;
     api("/api/v1/ask", { method: "POST", body: JSON.stringify({ message: text, session_id: session }) })
-      .then(function (d) { pending.textContent = d.answer || ""; })
+      .then(function (d) {
+        pending.textContent = d.answer || "";
+        // handoff mode: the AI couldn't answer, so collect contact for follow-up.
+        if (cfg.contact_capture === "handoff" && d.answered === false && !contactDone) { askContact(function () {}); }
+      })
       .catch(function () { pending.textContent = "Sorry, something went wrong. Please try again."; })
       .then(function () { sending = false; send.disabled = false; });
   }
@@ -148,7 +174,8 @@
     var text = input.value.trim();
     if (!text || sending || gating) return;
     input.value = ""; addMsg(text, "me");
-    if (cfg.require_contact && !contactDone) { askContact(function () { ask(text); }); }
+    // always mode: gate the first message behind contact capture.
+    if (cfg.contact_capture === "always" && !contactDone) { askContact(function () { ask(text); }); }
     else { ask(text); }
   };
 

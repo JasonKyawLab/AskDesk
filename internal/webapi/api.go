@@ -55,7 +55,7 @@ type Handler struct {
 	limiter        *rateLimiter
 	origins        []string // CORS allowlist; "*" allows any origin
 	sourceURL      string   // AGPL: link to the running source, surfaced in /config
-	requireContact bool     // widget asks for email/phone before an AI answer
+	contactCapture string   // "off"|"always"|"handoff" — surfaced on /config
 	log            *slog.Logger
 	mux            *http.ServeMux
 }
@@ -64,7 +64,7 @@ type Handler struct {
 type Options struct {
 	AllowedOrigins []string // CORS allowlist ("*" = any; safe since auth is a header key)
 	SourceURL      string   // AGPL source link exposed on /config
-	RequireContact bool     // surfaced on /config so the widget gates AI answers behind contact
+	ContactCapture string   // surfaced on /config so the widget knows when to ask for contact
 }
 
 // New builds the API handler.
@@ -72,7 +72,7 @@ func New(engine Engine, faqs FAQStore, biz BusinessStore, replies ReplyStore, le
 	h := &Handler{
 		engine: engine, faqs: faqs, biz: biz, replies: replies, leads: leads,
 		limiter: newRateLimiter(), origins: opts.AllowedOrigins, sourceURL: opts.SourceURL,
-		requireContact: opts.RequireContact, log: log, mux: http.NewServeMux(),
+		contactCapture: opts.ContactCapture, log: log, mux: http.NewServeMux(),
 	}
 	h.mux.HandleFunc("GET /api/v1/config", h.handleConfig)
 	h.mux.HandleFunc("GET /api/v1/faqs", h.handleFAQs)
@@ -114,7 +114,7 @@ type configResponse struct {
 	Welcome        string   `json:"welcome"`
 	AskPrompt      string   `json:"ask_prompt"`
 	Categories     []string `json:"categories"`
-	RequireContact bool     `json:"require_contact"`      // widget gates AI answers behind contact
+	ContactCapture string   `json:"contact_capture"`      // off|always|handoff
 	SourceURL      string   `json:"source_url,omitempty"` // AGPL: where the running source lives
 }
 
@@ -135,7 +135,7 @@ func (h *Handler) handleConfig(w http.ResponseWriter, r *http.Request) {
 		Welcome:        settings.WelcomeMessage,
 		AskPrompt:      settings.AskPrompt,
 		Categories:     emptyIfNil(cats),
-		RequireContact: h.requireContact,
+		ContactCapture: h.contactCapture,
 		SourceURL:      h.sourceURL,
 	})
 }
@@ -249,6 +249,12 @@ func (h *Handler) handleReplies(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"replies": replies})
 }
 
+// Lead-capture rate limits (contact submissions are rare, so caps are low).
+const (
+	leadPerMin       = 5  // per visitor/session
+	leadGlobalPerMin = 30 // per business, to bound session-rotating spam
+)
+
 type leadRequest struct {
 	SessionID string `json:"session_id"`
 	Name      string `json:"name"`
@@ -273,7 +279,16 @@ func (h *Handler) handleLead(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := businessID(r.Context())
-	if err := h.leads.Upsert(r.Context(), id, sessionOrAnon(req.SessionID),
+	session := sessionOrAnon(req.SessionID)
+
+	// Rate limit contact submissions: modest per-visitor cap, plus a per-business
+	// ceiling to bound session-rotating spam. Separate buckets from /ask.
+	if !h.limiter.allow(leadGlobalKey(id), leadGlobalPerMin) || !h.limiter.allow(leadKey(id, session), leadPerMin) {
+		writeError(w, http.StatusTooManyRequests, "too many submissions — please wait a moment and try again")
+		return
+	}
+
+	if err := h.leads.Upsert(r.Context(), id, session,
 		strings.TrimSpace(req.Name), strings.TrimSpace(req.Email), strings.TrimSpace(req.Phone)); err != nil {
 		h.serverError(w, "save lead", err)
 		return

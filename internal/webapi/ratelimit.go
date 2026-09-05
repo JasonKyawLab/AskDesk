@@ -67,3 +67,11 @@ func globalKey(businessID int64) string { return fmt.Sprintf("g:%d", businessID)
 func userKey(businessID int64, session string) string {
 	return fmt.Sprintf("u:%d:%s", businessID, session)
 }
+
+// leadKey / leadGlobalKey are separate buckets so lead submissions and /ask
+// don't share a limit.
+func leadKey(businessID int64, session string) string {
+	return fmt.Sprintf("lead:%d:%s", businessID, session)
+}
+
+func leadGlobalKey(businessID int64) string { return fmt.Sprintf("leadg:%d", businessID) }
