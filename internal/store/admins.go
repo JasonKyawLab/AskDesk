@@ -84,6 +84,9 @@ type PendingQuestion struct {
 	UserName  string // customer display name, may be empty
 	Channel   core.Channel
 	CreatedAt time.Time
+	SessionID string // widget session (external_user_id); links to a lead
+	Email     string // captured lead email for this session, may be empty
+	Phone     string // captured lead phone for this session, may be empty
 }
 
 // Ago is the time since the question arrived, e.g. "2h ago".
@@ -91,10 +94,14 @@ func (p PendingQuestion) Ago() string { return ago(p.CreatedAt) }
 
 // PendingUnanswered returns up to limit pending questions for a business.
 func (a *Admins) PendingUnanswered(ctx context.Context, businessID int64, limit int) ([]PendingQuestion, error) {
+	// LEFT JOIN the captured lead (by widget session) so each pending question
+	// carries the contact who asked it — admins can see who to follow up with.
 	const q = `
-		SELECT u.id, u.question, coalesce(c.external_user_name, ''), c.channel, c.created_at
+		SELECT u.id, u.question, coalesce(c.external_user_name, ''), c.channel, c.created_at,
+		       coalesce(c.external_user_id, ''), coalesce(l.email, ''), coalesce(l.phone, '')
 		FROM unanswered_queue u
 		JOIN conversations c ON c.id = u.conversation_id
+		LEFT JOIN leads l ON l.business_id = c.business_id AND l.session_id = c.external_user_id
 		WHERE c.business_id = $1 AND u.status = 'pending'
 		ORDER BY u.created_at DESC
 		LIMIT $2`
@@ -109,7 +116,7 @@ func (a *Admins) PendingUnanswered(ctx context.Context, businessID int64, limit 
 	for rows.Next() {
 		var p PendingQuestion
 		var channel string
-		if err := rows.Scan(&p.ID, &p.Question, &p.UserName, &channel, &p.CreatedAt); err != nil {
+		if err := rows.Scan(&p.ID, &p.Question, &p.UserName, &channel, &p.CreatedAt, &p.SessionID, &p.Email, &p.Phone); err != nil {
 			return nil, fmt.Errorf("scan pending: %w", err)
 		}
 		p.Channel = core.Channel(channel)
