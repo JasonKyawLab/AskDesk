@@ -194,4 +194,8 @@ self-service onboarding · observability.
 
 ## License
 
-Apache License 2.0 — see [LICENSE](LICENSE).
+**GNU AGPL-3.0** — see [LICENSE](LICENSE). If you run a modified version as a
+network service, you must make your source available to its users (AGPL §13).
+
+**Commercial licenses available on request** — for use without the AGPL's
+obligations, contact the maintainer.
