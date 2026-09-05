@@ -103,7 +103,7 @@
   var input = el("input"); input.type = "text"; input.placeholder = "Type your question…";
   var send = el("button", null, "Send"); send.type = "submit";
   form.appendChild(input); form.appendChild(send);
-  panel.appendChild(head); panel.appendChild(body); panel.appendChild(foot); panel.appendChild(form);
+  panel.appendChild(head); panel.appendChild(body); panel.appendChild(form); panel.appendChild(foot);
   document.body.appendChild(btn); document.body.appendChild(panel);
 
   function addMsg(text, who) { var m = el("div", "adk-msg " + (who === "me" ? "adk-me" : "adk-bot"), text); body.appendChild(m); body.scrollTop = body.scrollHeight; return m; }
