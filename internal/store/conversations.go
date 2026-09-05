@@ -19,6 +19,22 @@ func NewConversations(pool *pgxpool.Pool) *Conversations {
 	return &Conversations{pool: pool}
 }
 
+// PurgeOlderThan deletes conversations older than the given number of days and
+// returns how many were removed. Related unanswered_queue rows cascade away via
+// their foreign key. Used by the retention job to bound the database and honour
+// data-retention limits. days <= 0 is a no-op.
+func (c *Conversations) PurgeOlderThan(ctx context.Context, days int) (int64, error) {
+	if days <= 0 {
+		return 0, nil
+	}
+	tag, err := c.pool.Exec(ctx,
+		`DELETE FROM conversations WHERE created_at < now() - make_interval(days => $1)`, days)
+	if err != nil {
+		return 0, fmt.Errorf("purge conversations: %w", err)
+	}
+	return tag.RowsAffected(), nil
+}
+
 // LogConversation inserts one interaction and returns its id.
 func (c *Conversations) LogConversation(ctx context.Context, rec core.ConversationRecord) (int64, error) {
 	const q = `

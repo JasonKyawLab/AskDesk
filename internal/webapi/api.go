@@ -42,20 +42,22 @@ type ReplyStore interface {
 
 // Handler serves the /api/v1 endpoints.
 type Handler struct {
-	engine  Engine
-	faqs    FAQStore
-	biz     BusinessStore
-	replies ReplyStore
-	limiter *rateLimiter
-	origins []string // CORS allowlist; "*" allows any origin
-	log     *slog.Logger
-	mux     *http.ServeMux
+	engine    Engine
+	faqs      FAQStore
+	biz       BusinessStore
+	replies   ReplyStore
+	limiter   *rateLimiter
+	origins   []string // CORS allowlist; "*" allows any origin
+	sourceURL string   // AGPL: link to the running source, surfaced in /config
+	log       *slog.Logger
+	mux       *http.ServeMux
 }
 
 // New builds the API handler. allowedOrigins is the CORS allowlist (["*"] allows
 // any origin — fine here since auth is a header API key, not a cookie).
-func New(engine Engine, faqs FAQStore, biz BusinessStore, replies ReplyStore, allowedOrigins []string, log *slog.Logger) *Handler {
-	h := &Handler{engine: engine, faqs: faqs, biz: biz, replies: replies, limiter: newRateLimiter(), origins: allowedOrigins, log: log, mux: http.NewServeMux()}
+// sourceURL is the AGPL source link exposed on /config.
+func New(engine Engine, faqs FAQStore, biz BusinessStore, replies ReplyStore, allowedOrigins []string, sourceURL string, log *slog.Logger) *Handler {
+	h := &Handler{engine: engine, faqs: faqs, biz: biz, replies: replies, limiter: newRateLimiter(), origins: allowedOrigins, sourceURL: sourceURL, log: log, mux: http.NewServeMux()}
 	h.mux.HandleFunc("GET /api/v1/config", h.handleConfig)
 	h.mux.HandleFunc("GET /api/v1/faqs", h.handleFAQs)
 	h.mux.HandleFunc("POST /api/v1/ask", h.handleAsk)
@@ -95,6 +97,7 @@ type configResponse struct {
 	Welcome      string   `json:"welcome"`
 	AskPrompt    string   `json:"ask_prompt"`
 	Categories   []string `json:"categories"`
+	SourceURL    string   `json:"source_url,omitempty"` // AGPL: where the running source lives
 }
 
 func (h *Handler) handleConfig(w http.ResponseWriter, r *http.Request) {
@@ -114,6 +117,7 @@ func (h *Handler) handleConfig(w http.ResponseWriter, r *http.Request) {
 		Welcome:      settings.WelcomeMessage,
 		AskPrompt:    settings.AskPrompt,
 		Categories:   emptyIfNil(cats),
+		SourceURL:    h.sourceURL,
 	})
 }
 

@@ -74,6 +74,11 @@ The bot only answers when a FAQ matches confidently; otherwise it skips the AI
 the pending queue. Customise that message ("Busy / fallback message") on the
 `/edit` settings page.
 
+**Data retention (optional):** set `ASKDESK_RETENTION_DAYS=90` to auto-delete
+conversations older than 90 days (runs on boot, then daily). `0`/unset keeps
+everything. Since each business runs its own deployment, this is per-business.
+Good for privacy and keeping the database small.
+
 **FAQ-only mode (no AI):** AI is **on by default** (unset = enabled). Set
 `ASKDESK_AI_ENABLED=false` to run without any AI.
 The button menu (tap category → question → answer) still works fully; free-typed
