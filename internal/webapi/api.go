@@ -249,6 +249,12 @@ func (h *Handler) handleReplies(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"replies": replies})
 }
 
+// Lead-capture rate limits (contact submissions are rare, so caps are low).
+const (
+	leadPerMin       = 5  // per visitor/session
+	leadGlobalPerMin = 30 // per business, to bound session-rotating spam
+)
+
 type leadRequest struct {
 	SessionID string `json:"session_id"`
 	Name      string `json:"name"`
@@ -273,7 +279,16 @@ func (h *Handler) handleLead(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := businessID(r.Context())
-	if err := h.leads.Upsert(r.Context(), id, sessionOrAnon(req.SessionID),
+	session := sessionOrAnon(req.SessionID)
+
+	// Rate limit contact submissions: modest per-visitor cap, plus a per-business
+	// ceiling to bound session-rotating spam. Separate buckets from /ask.
+	if !h.limiter.allow(leadGlobalKey(id), leadGlobalPerMin) || !h.limiter.allow(leadKey(id, session), leadPerMin) {
+		writeError(w, http.StatusTooManyRequests, "too many submissions — please wait a moment and try again")
+		return
+	}
+
+	if err := h.leads.Upsert(r.Context(), id, session,
 		strings.TrimSpace(req.Name), strings.TrimSpace(req.Email), strings.TrimSpace(req.Phone)); err != nil {
 		h.serverError(w, "save lead", err)
 		return
