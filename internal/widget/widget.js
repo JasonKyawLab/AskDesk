@@ -60,6 +60,8 @@
 .adk-tg{display:block;text-align:center;margin-top:8px;font-size:13px;color:$C;text-decoration:none}\
 .adk-foot{flex:none;text-align:center;padding:7px;font-size:11px;color:#9a9a9a;border-top:1px solid #eee;background:#fff}\
 .adk-foot a{color:#9a9a9a;text-decoration:none}\
+.adk-brand{display:inline-flex;align-items:center;vertical-align:middle;margin-left:2px}\
+.adk-brand svg{height:12px;width:auto;display:block}\
 .adk-in{flex:none;display:flex;gap:8px;padding:10px;border-top:1px solid #eee;background:#fff}\
 .adk-in input{flex:1;border:1px solid #ddd;border-radius:10px;padding:9px 11px;font:inherit;font-size:14px}\
 .adk-in button{background:$C;color:#fff;border:0;border-radius:10px;padding:0 14px;font-size:14px;cursor:pointer}\
@@ -166,15 +168,23 @@
   btn.onclick = function () { toggle(); };
   xbtn.onclick = function () { toggle(false); };
 
+  // AskDesk brand wordmark (self-contained SVG; links to source for AGPL).
+  function brandHTML(url) {
+    return 'Powered by <a class="adk-brand" href="' + (url || "https://github.com/JasonKyawLab/AskDesk") +
+      '" target="_blank" rel="noopener" aria-label="AskDesk — source">' +
+      '<svg viewBox="0 0 108 20" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="AskDesk">' +
+      '<text x="3" y="16" font-family="Arial Black,Arial,Helvetica,sans-serif" font-weight="900" ' +
+      'font-size="18" letter-spacing="-.5" transform="skewX(-11)" fill="currentColor">AskDesk</text></svg></a>';
+  }
+
   // ---- boot ----
   Promise.all([api("/api/v1/config"), api("/api/v1/faqs").catch(function () { return { categories: [] }; })])
     .then(function (res) {
       cfg = Object.assign(cfg, res[0]);
       faqs = (res[1].categories) || [];
       title.textContent = cfg.business_name || "Support";
-      var src = cfg.source_url ? ' · <a href="' + cfg.source_url + '" target="_blank" rel="noopener">Source</a>' : "";
-      foot.innerHTML = "Powered by AskDesk" + src;
+      foot.innerHTML = brandHTML(cfg.source_url);
       showMenu();
     })
-    .catch(function () { foot.textContent = "Powered by AskDesk"; addMsg("Chat is unavailable right now.", "bot"); });
+    .catch(function () { foot.innerHTML = brandHTML(""); addMsg("Chat is unavailable right now.", "bot"); });
 })();
