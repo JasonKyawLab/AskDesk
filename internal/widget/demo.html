@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AskDesk widget — demo</title>
+<style>
+  body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; margin: 0;
+         background: #f4f6f9; color: #1a2230; line-height: 1.6; }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 3rem 1.25rem 8rem; }
+  h1 { font-size: 1.7rem; margin: 0 0 .4rem; }
+  p { color: #5b6675; }
+  code { background: #e7ebf1; padding: .15rem .4rem; border-radius: 6px; font-size: .9em; }
+  pre { background: #0e1524; color: #e9eef5; padding: 1rem 1.1rem; border-radius: 12px; overflow-x: auto; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>AskDesk widget — demo page</h1>
+    <p>The chat bubble in the bottom-right is the embeddable widget, loaded with one
+       line. Paste your <strong>public API key</strong> below and reload to try it.</p>
+    <p>To embed it on any site, add:</p>
+    <pre>&lt;script src="https://YOUR-HOST/widget.js"
+        data-key="YOUR_PUBLIC_API_KEY"&gt;&lt;/script&gt;</pre>
+    <p>Optional attributes: <code>data-api</code> (API host, defaults to the script's
+       origin), <code>data-color</code> (accent colour), <code>data-telegram</code>
+       (a t.me link for the "continue on Telegram" handoff).</p>
+  </div>
+
+  <!-- Replace the key, then open /widget/demo to try it. -->
+  <script src="/widget.js" data-key="REPLACE_WITH_PUBLIC_API_KEY" data-color="#0D7A5F"></script>
+</body>
+</html>

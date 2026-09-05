@@ -34,6 +34,7 @@ import (
 	"github.com/JasonKyawLab/AskDesk/internal/server"
 	"github.com/JasonKyawLab/AskDesk/internal/store"
 	"github.com/JasonKyawLab/AskDesk/internal/webapi"
+	"github.com/JasonKyawLab/AskDesk/internal/widget"
 )
 
 func main() {
@@ -73,6 +74,7 @@ func run() error {
 		bizStore := store.NewBusinesses(pool)
 		adminStore := store.NewAdmins(pool)
 		webReplies := store.NewWebReplies(pool)
+		leadStore := store.NewLeads(pool)
 		conversations := store.NewConversations(pool)
 		engine := core.NewEngine(faqStore, genProvider, conversations, bizStore, log, cfg.AIEnabled)
 		if !cfg.AIEnabled {
@@ -91,8 +93,17 @@ func run() error {
 		// Web API (JSON channel) — available whenever the database is present.
 		// Public (customer) endpoints under /api/v1, admin endpoints under
 		// /api/v1/admin (separate X-Admin-Key, no CORS — backend only).
-		srv.Mount("/api/v1/", webapi.New(engine, faqStore, bizStore, webReplies, cfg.CORSOrigins, cfg.SourceURL, log))
+		srv.Mount("/api/v1/", webapi.New(engine, faqStore, bizStore, webReplies, leadStore, webapi.Options{
+			AllowedOrigins: cfg.CORSOrigins,
+			SourceURL:      cfg.SourceURL,
+			RequireContact: cfg.RequireContact,
+		}, log))
 		srv.Mount("/api/v1/admin/", webapi.NewAdmin(adminStore, deliverer, bizStore, log))
+
+		// Embeddable web widget: one-line <script> any site can drop in.
+		wdg := widget.New()
+		srv.Mount("GET /widget.js", http.HandlerFunc(wdg.ServeScript))
+		srv.Mount("GET /widget/demo", http.HandlerFunc(wdg.ServeDemo))
 		log.Info("web api enabled")
 
 		// Chat channels (Telegram, Messenger) share one submitter: run the engine

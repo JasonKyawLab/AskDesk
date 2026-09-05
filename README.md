@@ -32,6 +32,10 @@ self-hosting are the cost advantage, not an afterthought.
   to the customer's own channel. A web-only operator never needs Telegram.
 - **Provider failover** — a cost-ordered AI chain with a circuit breaker; falls
   over to the next provider on quota limits or outages.
+- **Embeddable widget** — one `<script>` line drops a chat bubble on any website;
+  it browses FAQs, asks the AI, and shows a "Powered by AskDesk" footer. Optional
+  **contact-gate** (per business) captures an email/phone before an AI answer —
+  turning support into lead capture.
 - **Rate limiting** — per-user and whole-deployment `/ask` limits, adjustable at
   runtime to protect your AI quota during traffic spikes.
 - **Runtime config** — shop name, welcome/fallback messages, rate limits, and FAQs

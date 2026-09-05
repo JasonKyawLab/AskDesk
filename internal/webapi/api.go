@@ -40,28 +40,45 @@ type ReplyStore interface {
 	Since(ctx context.Context, businessID int64, sessionID string, sinceID int64) ([]store.WebReply, error)
 }
 
-// Handler serves the /api/v1 endpoints.
-type Handler struct {
-	engine    Engine
-	faqs      FAQStore
-	biz       BusinessStore
-	replies   ReplyStore
-	limiter   *rateLimiter
-	origins   []string // CORS allowlist; "*" allows any origin
-	sourceURL string   // AGPL: link to the running source, surfaced in /config
-	log       *slog.Logger
-	mux       *http.ServeMux
+// LeadStore records contact details captured by the widget's contact-gate.
+type LeadStore interface {
+	Upsert(ctx context.Context, businessID int64, sessionID, name, email, phone string) error
 }
 
-// New builds the API handler. allowedOrigins is the CORS allowlist (["*"] allows
-// any origin — fine here since auth is a header API key, not a cookie).
-// sourceURL is the AGPL source link exposed on /config.
-func New(engine Engine, faqs FAQStore, biz BusinessStore, replies ReplyStore, allowedOrigins []string, sourceURL string, log *slog.Logger) *Handler {
-	h := &Handler{engine: engine, faqs: faqs, biz: biz, replies: replies, limiter: newRateLimiter(), origins: allowedOrigins, sourceURL: sourceURL, log: log, mux: http.NewServeMux()}
+// Handler serves the /api/v1 endpoints.
+type Handler struct {
+	engine         Engine
+	faqs           FAQStore
+	biz            BusinessStore
+	replies        ReplyStore
+	leads          LeadStore
+	limiter        *rateLimiter
+	origins        []string // CORS allowlist; "*" allows any origin
+	sourceURL      string   // AGPL: link to the running source, surfaced in /config
+	requireContact bool     // widget asks for email/phone before an AI answer
+	log            *slog.Logger
+	mux            *http.ServeMux
+}
+
+// Options configures the web API handler.
+type Options struct {
+	AllowedOrigins []string // CORS allowlist ("*" = any; safe since auth is a header key)
+	SourceURL      string   // AGPL source link exposed on /config
+	RequireContact bool     // surfaced on /config so the widget gates AI answers behind contact
+}
+
+// New builds the API handler.
+func New(engine Engine, faqs FAQStore, biz BusinessStore, replies ReplyStore, leads LeadStore, opts Options, log *slog.Logger) *Handler {
+	h := &Handler{
+		engine: engine, faqs: faqs, biz: biz, replies: replies, leads: leads,
+		limiter: newRateLimiter(), origins: opts.AllowedOrigins, sourceURL: opts.SourceURL,
+		requireContact: opts.RequireContact, log: log, mux: http.NewServeMux(),
+	}
 	h.mux.HandleFunc("GET /api/v1/config", h.handleConfig)
 	h.mux.HandleFunc("GET /api/v1/faqs", h.handleFAQs)
 	h.mux.HandleFunc("POST /api/v1/ask", h.handleAsk)
 	h.mux.HandleFunc("GET /api/v1/replies", h.handleReplies)
+	h.mux.HandleFunc("POST /api/v1/lead", h.handleLead)
 	return h
 }
 
@@ -93,11 +110,12 @@ func businessID(ctx context.Context) int64 {
 // --- endpoints ---
 
 type configResponse struct {
-	BusinessName string   `json:"business_name"`
-	Welcome      string   `json:"welcome"`
-	AskPrompt    string   `json:"ask_prompt"`
-	Categories   []string `json:"categories"`
-	SourceURL    string   `json:"source_url,omitempty"` // AGPL: where the running source lives
+	BusinessName   string   `json:"business_name"`
+	Welcome        string   `json:"welcome"`
+	AskPrompt      string   `json:"ask_prompt"`
+	Categories     []string `json:"categories"`
+	RequireContact bool     `json:"require_contact"`      // widget gates AI answers behind contact
+	SourceURL      string   `json:"source_url,omitempty"` // AGPL: where the running source lives
 }
 
 func (h *Handler) handleConfig(w http.ResponseWriter, r *http.Request) {
@@ -113,11 +131,12 @@ func (h *Handler) handleConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, configResponse{
-		BusinessName: settings.DisplayName,
-		Welcome:      settings.WelcomeMessage,
-		AskPrompt:    settings.AskPrompt,
-		Categories:   emptyIfNil(cats),
-		SourceURL:    h.sourceURL,
+		BusinessName:   settings.DisplayName,
+		Welcome:        settings.WelcomeMessage,
+		AskPrompt:      settings.AskPrompt,
+		Categories:     emptyIfNil(cats),
+		RequireContact: h.requireContact,
+		SourceURL:      h.sourceURL,
 	})
 }
 
@@ -228,6 +247,38 @@ func (h *Handler) handleReplies(w http.ResponseWriter, r *http.Request) {
 		replies = []store.WebReply{}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"replies": replies})
+}
+
+type leadRequest struct {
+	SessionID string `json:"session_id"`
+	Name      string `json:"name"`
+	Email     string `json:"email"`
+	Phone     string `json:"phone"`
+}
+
+// handleLead saves a widget visitor's contact details (the contact-gate). At
+// least an email or phone is required.
+func (h *Handler) handleLead(w http.ResponseWriter, r *http.Request) {
+	if h.leads == nil {
+		writeError(w, http.StatusServiceUnavailable, "lead capture is not configured")
+		return
+	}
+	var req leadRequest
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	if strings.TrimSpace(req.Email) == "" && strings.TrimSpace(req.Phone) == "" {
+		writeError(w, http.StatusBadRequest, "email or phone is required")
+		return
+	}
+	id := businessID(r.Context())
+	if err := h.leads.Upsert(r.Context(), id, sessionOrAnon(req.SessionID),
+		strings.TrimSpace(req.Name), strings.TrimSpace(req.Email), strings.TrimSpace(req.Phone)); err != nil {
+		h.serverError(w, "save lead", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
 // --- helpers ---

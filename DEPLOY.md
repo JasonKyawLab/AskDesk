@@ -214,6 +214,23 @@ just a grouping key — no personal data required.
 CORS: set `ASKDESK_CORS_ORIGINS` to your site (or `*`). Only needed for direct
 browser calls.
 
+### Embeddable widget (drop-in chat bubble)
+
+Any website can add the chat bubble with one line — no build step:
+
+```html
+<script src="https://<your-app>/widget.js" data-key="<business api_key>"></script>
+```
+
+Optional attributes: `data-api` (API host, defaults to the script's origin),
+`data-color` (accent colour), `data-telegram` (a `t.me/...` link for the
+"continue on Telegram" handoff). Preview it at `https://<your-app>/widget/demo`.
+
+**Contact-gate (lead capture):** set `ASKDESK_REQUIRE_CONTACT=true` and the widget
+asks for an email/phone **before** an AI answer, saving it as a lead — great for
+lead-gen (e.g. an education agency). Default `false` (a support bot answers
+without asking). Per-business by virtue of per-deployment env.
+
 ### Answering web customers (handoff)
 When the AI can't answer a web question, it's queued like any other. Reply to it
 from **any** admin surface — all route the answer back to the web visitor, who
