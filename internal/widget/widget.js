@@ -13,6 +13,8 @@
   var KEY = script.getAttribute("data-key") || "";
   var COLOR = script.getAttribute("data-color") || "#0D7A5F";
   var TELEGRAM = script.getAttribute("data-telegram") || ""; // optional t.me/... handoff link
+  var LOGO = script.getAttribute("data-logo") || "";         // optional header logo URL
+  var POS = script.getAttribute("data-position") === "left" ? "left" : "right";
   if (!KEY) { console.error("[AskDesk] widget: missing data-key"); return; }
 
   function store(k, v) { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) { return null; } }
@@ -33,12 +35,16 @@
 
   // ---- styles ----
   var css = "\
-.adk-btn{position:fixed;bottom:20px;right:20px;width:56px;height:56px;border-radius:50%;background:$C;color:#fff;border:0;cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.25);z-index:2147483000;display:flex;align-items:center;justify-content:center;transition:transform .15s}\
+.adk-btn{position:fixed;bottom:20px;width:56px;height:56px;border-radius:50%;background:$C;color:#fff;border:0;cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.25);z-index:2147483000;display:flex;align-items:center;justify-content:center;transition:transform .15s}\
 .adk-btn:hover{transform:scale(1.05)}\
-.adk-panel{position:fixed;bottom:88px;right:20px;width:370px;max-width:calc(100vw - 32px);height:560px;max-height:calc(100vh - 120px);background:#fff;border-radius:16px;box-shadow:0 12px 48px rgba(0,0,0,.22);z-index:2147483000;display:none;flex-direction:column;overflow:hidden;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}\
+.adk-btn.adk-right{right:20px}.adk-btn.adk-left{left:20px}\
+.adk-panel{position:fixed;bottom:88px;width:370px;max-width:calc(100vw - 32px);height:560px;max-height:calc(100vh - 120px);background:#fff;border-radius:16px;box-shadow:0 12px 48px rgba(0,0,0,.22);z-index:2147483000;display:none;flex-direction:column;overflow:hidden;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}\
+.adk-panel.adk-right{right:20px}.adk-panel.adk-left{left:20px}\
 .adk-panel.adk-open{display:flex}\
 .adk-hd{background:$C;color:#fff;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;flex:none}\
-.adk-hd b{font-size:15px;font-weight:600}\
+.adk-hdl{display:flex;align-items:center;gap:9px;min-width:0}\
+.adk-logo{width:26px;height:26px;border-radius:6px;object-fit:cover;background:#fff;flex:none}\
+.adk-hd b{font-size:15px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}\
 .adk-x{background:none;border:0;color:#fff;opacity:.85;font-size:20px;cursor:pointer;line-height:1}\
 .adk-body{flex:1;overflow-y:auto;background:#F7F7F5;padding:14px}\
 .adk-msg{max-width:82%;padding:9px 12px;border-radius:14px;font-size:14px;line-height:1.5;margin-bottom:10px;white-space:pre-wrap;word-wrap:break-word}\
@@ -62,11 +68,15 @@
   var s = document.createElement("style"); s.textContent = css; document.head.appendChild(s);
 
   // ---- DOM ----
-  var btn = el("button", "adk-btn"); btn.setAttribute("aria-label", "Open chat");
+  var btn = el("button", "adk-btn adk-" + POS); btn.setAttribute("aria-label", "Open chat");
   btn.innerHTML = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
-  var panel = el("div", "adk-panel");
-  var head = el("div", "adk-hd"); var title = el("b", null, "Support"); var xbtn = el("button", "adk-x", "×");
-  head.appendChild(title); head.appendChild(xbtn);
+  var panel = el("div", "adk-panel adk-" + POS);
+  var head = el("div", "adk-hd");
+  var hdl = el("div", "adk-hdl");
+  if (LOGO) { var logo = el("img", "adk-logo"); logo.src = LOGO; logo.alt = ""; hdl.appendChild(logo); }
+  var title = el("b", null, "Support"); hdl.appendChild(title);
+  var xbtn = el("button", "adk-x", "×");
+  head.appendChild(hdl); head.appendChild(xbtn);
   var body = el("div", "adk-body");
   var foot = el("div", "adk-foot");
   var form = el("form", "adk-in");
