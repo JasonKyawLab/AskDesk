@@ -29,10 +29,66 @@ const pageTemplate = `<!doctype html>
   .cat { display: inline-block; font-size: .7rem; opacity: .7; border: 1px solid #8886;
          border-radius: 999px; padding: 0 .5rem; margin-top: .4rem; }
   .empty { opacity: .6; margin-top: .6rem; }
+  .cards { display: flex; gap: .5rem; margin-top: .6rem; }
+  .card { flex: 1; border: 1px solid #8883; border-radius: 10px; padding: .6rem .7rem; text-align: center; }
+  .card .n { font-size: 1.4rem; font-weight: 700; }
+  .card .l { font-size: .72rem; opacity: .7; }
+  .ok { color: #16a34a; } .warn { color: #d97706; }
+  .rank { list-style: none; padding: 0; margin: .5rem 0 0; }
+  .rank li { display: flex; justify-content: space-between; gap: .5rem; padding: .3rem 0; border-bottom: 1px solid #8882; font-size: .9rem; }
+  .rank li span.c { opacity: .6; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .miss { color: #dc2626; }
+  .bars { margin-top: .5rem; }
+  .bar { display: grid; grid-template-columns: 3.2rem 1fr 2rem; align-items: center; gap: .5rem; font-size: .8rem; margin: .2rem 0; }
+  .bar .track { background: #8882; border-radius: 999px; height: .55rem; overflow: hidden; }
+  .bar .fill { background: #2563eb; height: 100%; }
+  .bar .v { text-align: right; opacity: .6; font-variant-numeric: tabular-nums; }
+  details.lead { border: 1px solid #8883; border-radius: 10px; padding: .6rem .75rem; margin-top: .6rem; }
+  details.lead summary { cursor: pointer; font-weight: 600; }
+  details.lead .a { opacity: .85; margin: .3rem 0; font-weight: 400; }
+  details.lead ul { margin: .4rem 0 0; padding-left: 1rem; font-size: .85rem; }
+  details.lead li { margin: .15rem 0; }
+  .qa { color: #16a34a; } .qu { color: #dc2626; }
+  .muted { opacity: .55; font-size: .78rem; }
 </style>
 </head>
 <body>
   <h1>Support admin</h1>
+
+  {{with .Analytics}}
+  <h2>📊 Analytics <small class="muted">· last {{.Days}} days</small></h2>
+  <div class="cards">
+    <div class="card"><div class="n">{{.Total}}</div><div class="l">Questions</div></div>
+    <div class="card"><div class="n ok">{{.AnsweredPct}}%</div><div class="l">Answered</div></div>
+    <div class="card"><div class="n warn">{{.Unanswered}}</div><div class="l">Unanswered</div></div>
+  </div>
+
+  {{if .Top}}
+  <h2>Most asked</h2>
+  <ul class="rank">
+    {{range .Top}}<li><span>{{.Question}}</span><span class="c">{{.Count}}×{{if .Unanswered}} <span class="miss">({{.Unanswered}} missed)</span>{{end}}</span></li>{{end}}
+  </ul>
+  {{end}}
+
+  {{if .Gaps}}
+  <h2>FAQ gaps <small class="muted">· asked but not answered</small></h2>
+  <ul class="rank">
+    {{range .Gaps}}<li><span class="miss">{{.Question}}</span><span class="c">{{.Count}}×</span></li>{{end}}
+  </ul>
+  {{end}}
+
+  {{if .BusyDays}}
+  <h2>Busy times <small class="muted">· UTC</small></h2>
+  <div class="bars">
+    {{range .BusyDays}}<div class="bar"><span>{{.Label}}</span><span class="track"><span class="fill" style="width:{{.Pct}}%"></span></span><span class="v">{{.Count}}</span></div>{{end}}
+  </div>
+  {{end}}
+  {{if .BusyHours}}
+  <div class="bars">
+    {{range .BusyHours}}<div class="bar"><span>{{.Label}}</span><span class="track"><span class="fill" style="width:{{.Pct}}%"></span></span><span class="v">{{.Count}}</span></div>{{end}}
+  </div>
+  {{end}}
+  {{end}}
 
   <h2>📥 Pending questions</h2>
   {{if not .Pending}}<p class="empty">No pending questions. 🎉</p>{{end}}
@@ -57,13 +113,18 @@ const pageTemplate = `<!doctype html>
   <h2>📇 Leads <small>({{len .Leads}})</small></h2>
   {{if not .Leads}}<p class="empty">No leads captured yet.</p>{{end}}
   {{range .Leads}}
-    <div class="faq">
-      <div class="q">{{if .Name}}{{.Name}}{{else}}Visitor{{end}}</div>
+    <details class="lead">
+      <summary>{{if .Name}}{{.Name}}{{else}}Visitor{{end}} <span class="muted">· {{len .Messages}} question{{if ne (len .Messages) 1}}s{{end}}</span></summary>
       <div class="a">
         {{if .Email}}✉️ <a href="mailto:{{.Email}}">{{.Email}}</a>{{end}}
         {{if .Phone}}&nbsp; 📞 {{.Phone}}{{end}}
       </div>
-    </div>
+      {{if .Messages}}
+      <ul>
+        {{range .Messages}}<li><span class="{{if .Answered}}qa{{else}}qu{{end}}">{{if .Answered}}✓{{else}}✗{{end}}</span> {{.Question}} <span class="muted">· {{shortdate .CreatedAt}}</span></li>{{end}}
+      </ul>
+      {{else}}<div class="muted">No questions recorded for this session.</div>{{end}}
+    </details>
   {{end}}
 
   <h2>Business settings</h2>

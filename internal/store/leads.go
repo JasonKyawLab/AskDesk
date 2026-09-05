@@ -98,6 +98,57 @@ func (l *Leads) Profile(ctx context.Context, businessID int64, sessionID string)
 	return p, rows.Err()
 }
 
+// ProfilesList returns up to `limit` leads (newest first) each with the
+// questions their session asked — the CRM view, in a single query.
+func (l *Leads) ProfilesList(ctx context.Context, businessID int64, limit int) ([]LeadProfile, error) {
+	const q = `
+		SELECT le.session_id, coalesce(le.name,''), coalesce(le.email,''), coalesce(le.phone,''),
+		       c.question, c.was_answered, coalesce(c.channel,''), c.created_at
+		FROM (SELECT session_id, name, email, phone, created_at
+		      FROM leads WHERE business_id = $1
+		      ORDER BY created_at DESC LIMIT $2) le
+		LEFT JOIN conversations c
+		  ON c.business_id = $1 AND c.external_user_id = le.session_id
+		ORDER BY le.created_at DESC, c.created_at DESC`
+	rows, err := l.pool.Query(ctx, q, businessID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("lead profiles: %w", err)
+	}
+	defer rows.Close()
+
+	var out []LeadProfile
+	idx := map[string]int{}
+	for rows.Next() {
+		var session, name, email, phone string
+		var question, channel *string
+		var answered *bool
+		var created *time.Time
+		if err := rows.Scan(&session, &name, &email, &phone, &question, &answered, &channel, &created); err != nil {
+			return nil, fmt.Errorf("scan lead profile: %w", err)
+		}
+		i, ok := idx[session]
+		if !ok {
+			out = append(out, LeadProfile{Lead: Lead{SessionID: session, Name: name, Email: email, Phone: phone}})
+			i = len(out) - 1
+			idx[session] = i
+		}
+		if question != nil { // LEFT JOIN: leads with no messages yield a NULL row
+			m := LeadMessage{Question: *question}
+			if answered != nil {
+				m.Answered = *answered
+			}
+			if channel != nil {
+				m.Channel = *channel
+			}
+			if created != nil {
+				m.CreatedAt = *created
+			}
+			out[i].Messages = append(out[i].Messages, m)
+		}
+	}
+	return out, rows.Err()
+}
+
 // List returns a business's captured leads, newest first (for an admin view).
 func (l *Leads) List(ctx context.Context, businessID int64, limit int) ([]Lead, error) {
 	const q = `

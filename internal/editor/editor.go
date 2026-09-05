@@ -6,6 +6,7 @@ package editor
 
 import (
 	"context"
+	"fmt"
 	"html/template"
 	"log/slog"
 	"net/http"
@@ -49,9 +50,18 @@ type Deliverer interface {
 	Deliver(ctx context.Context, channel core.Channel, replyTo, text string) error
 }
 
-// LeadStore lists contact details captured by the widget (nil disables the view).
+// LeadStore lists widget-captured contacts with the questions each asked (the
+// CRM view). nil disables the leads section.
 type LeadStore interface {
-	List(ctx context.Context, businessID int64, limit int) ([]store.Lead, error)
+	ProfilesList(ctx context.Context, businessID int64, limit int) ([]store.LeadProfile, error)
+}
+
+// AnalyticsStore runs the dashboard aggregate queries (nil disables the section).
+type AnalyticsStore interface {
+	AnswerRate(ctx context.Context, businessID int64, days int) (store.AnswerStats, error)
+	TopQuestions(ctx context.Context, businessID int64, days, limit int, onlyUnanswered bool) ([]store.QuestionCount, error)
+	BusyHours(ctx context.Context, businessID int64, days int) ([]store.HourBucket, error)
+	BusyDays(ctx context.Context, businessID int64, days int) ([]store.DayBucket, error)
 }
 
 // Handler serves the editor endpoints.
@@ -60,6 +70,7 @@ type Handler struct {
 	settings  SettingsStore
 	admin     AdminStore
 	leads     LeadStore
+	analytics AnalyticsStore
 	deliverer Deliverer
 	signer    *auth.Signer
 	secure    bool // set Secure on the session cookie (HTTPS deployments)
@@ -68,27 +79,74 @@ type Handler struct {
 }
 
 // NewHandler builds the editor handler. secure should be true in production so
-// the session cookie is only sent over HTTPS. leads may be nil.
-func NewHandler(faqs FAQStore, settings SettingsStore, admin AdminStore, leads LeadStore, deliverer Deliverer, signer *auth.Signer, secure bool, log *slog.Logger) *Handler {
+// the session cookie is only sent over HTTPS. leads and analytics may be nil.
+func NewHandler(faqs FAQStore, settings SettingsStore, admin AdminStore, leads LeadStore, analytics AnalyticsStore, deliverer Deliverer, signer *auth.Signer, secure bool, log *slog.Logger) *Handler {
 	return &Handler{
 		faqs:      faqs,
 		settings:  settings,
 		admin:     admin,
 		leads:     leads,
+		analytics: analytics,
 		deliverer: deliverer,
 		signer:    signer,
 		secure:    secure,
 		log:       log,
-		tmpl:      template.Must(template.New("page").Parse(pageTemplate)),
+		tmpl:      template.Must(template.New("page").Funcs(templateFuncs).Parse(pageTemplate)),
 	}
 }
 
 // pageData is the editor page model.
 type pageData struct {
-	Settings store.BusinessSettings
-	Pending  []store.PendingQuestion
-	Leads    []store.Lead
-	FAQs     []store.FAQ
+	Settings  store.BusinessSettings
+	Pending   []store.PendingQuestion
+	Leads     []store.LeadProfile
+	FAQs      []store.FAQ
+	Analytics *analyticsView
+}
+
+// analyticsView is the /edit analytics section, pre-formatted for the template.
+type analyticsView struct {
+	Days        int
+	Total       int
+	Answered    int
+	Unanswered  int
+	AnsweredPct int
+	Top         []store.QuestionCount
+	Gaps        []store.QuestionCount
+	BusyHours   []barRow // busiest hours, formatted "2 PM"
+	BusyDays    []barRow // busiest weekdays, formatted "Mon"
+}
+
+// barRow is one labelled bar in a mini bar chart (count + width %).
+type barRow struct {
+	Label string
+	Count int
+	Pct   int // 0-100, relative to the busiest bucket
+}
+
+var weekdayNames = [7]string{"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"}
+
+// templateFuncs are helpers available to the editor page template.
+var templateFuncs = template.FuncMap{
+	"shortdate": func(t time.Time) string {
+		if t.IsZero() {
+			return ""
+		}
+		return t.UTC().Format("Jan 2, 15:04")
+	},
+}
+
+func hourLabel(h int) string {
+	switch {
+	case h == 0:
+		return "12 AM"
+	case h < 12:
+		return fmt.Sprintf("%d AM", h)
+	case h == 12:
+		return "12 PM"
+	default:
+		return fmt.Sprintf("%d PM", h-12)
+	}
 }
 
 // HandleEdit exchanges a magic-link token for a session, then renders the list.
@@ -126,14 +184,83 @@ func (h *Handler) HandleEdit(w http.ResponseWriter, r *http.Request) {
 		h.serverError(w, "load pending", err)
 		return
 	}
-	var leads []store.Lead
+	var leads []store.LeadProfile
 	if h.leads != nil {
-		if leads, err = h.leads.List(r.Context(), claims.BusinessID, 100); err != nil {
+		if leads, err = h.leads.ProfilesList(r.Context(), claims.BusinessID, 100); err != nil {
 			h.serverError(w, "load leads", err)
 			return
 		}
 	}
-	h.render(w, pageData{Settings: settings, Pending: pending, Leads: leads, FAQs: faqs})
+	analytics, err := h.buildAnalytics(r.Context(), claims.BusinessID)
+	if err != nil {
+		h.serverError(w, "load analytics", err)
+		return
+	}
+	h.render(w, pageData{Settings: settings, Pending: pending, Leads: leads, FAQs: faqs, Analytics: analytics})
+}
+
+// buildAnalytics loads and formats the dashboard aggregates (last 30 days).
+// Returns nil (section hidden) when no analytics store is wired.
+func (h *Handler) buildAnalytics(ctx context.Context, businessID int64) (*analyticsView, error) {
+	if h.analytics == nil {
+		return nil, nil
+	}
+	const days = 30
+	rate, err := h.analytics.AnswerRate(ctx, businessID, days)
+	if err != nil {
+		return nil, err
+	}
+	top, err := h.analytics.TopQuestions(ctx, businessID, days, 8, false)
+	if err != nil {
+		return nil, err
+	}
+	gaps, err := h.analytics.TopQuestions(ctx, businessID, days, 8, true)
+	if err != nil {
+		return nil, err
+	}
+	hours, err := h.analytics.BusyHours(ctx, businessID, days)
+	if err != nil {
+		return nil, err
+	}
+	dayb, err := h.analytics.BusyDays(ctx, businessID, days)
+	if err != nil {
+		return nil, err
+	}
+	av := &analyticsView{
+		Days: days, Total: rate.Total, Answered: rate.Answered,
+		Unanswered: rate.Unanswered, AnsweredPct: rate.AnsweredPct(),
+		Top: top, Gaps: gaps,
+	}
+	var maxH int
+	for _, b := range hours {
+		if b.Count > maxH {
+			maxH = b.Count
+		}
+	}
+	for _, b := range hours {
+		av.BusyHours = append(av.BusyHours, barRow{Label: hourLabel(b.Hour), Count: b.Count, Pct: pctOf(b.Count, maxH)})
+	}
+	var maxD int
+	for _, b := range dayb {
+		if b.Count > maxD {
+			maxD = b.Count
+		}
+	}
+	for _, b := range dayb {
+		name := "?"
+		if b.Weekday >= 0 && b.Weekday < 7 {
+			name = weekdayNames[b.Weekday]
+		}
+		av.BusyDays = append(av.BusyDays, barRow{Label: name, Count: b.Count, Pct: pctOf(b.Count, maxD)})
+	}
+	return av, nil
+}
+
+func pctOf(n, max int) int {
+	if max <= 0 {
+		return 0
+	}
+	return int(float64(n)*100/float64(max) + 0.5)
 }
 
 // HandleReply relays an admin's answer to a pending question's customer (any

@@ -167,7 +167,7 @@ func run() error {
 
 		// Magic-link web admin: FAQs, settings, and pending-question handoff.
 		if cfg.MagicLinkSecret != "" {
-			ed := editor.NewHandler(faqStore, bizStore, adminStore, leadStore, deliverer, signer,
+			ed := editor.NewHandler(faqStore, bizStore, adminStore, leadStore, analyticsStore, deliverer, signer,
 				cfg.IsProduction() || strings.HasPrefix(cfg.PublicURL, "https"), log)
 			srv.Mount("GET /edit", http.HandlerFunc(ed.HandleEdit))
 			srv.Mount("POST /edit/faqs", http.HandlerFunc(ed.HandleCreate))
