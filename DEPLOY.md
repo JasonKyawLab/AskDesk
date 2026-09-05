@@ -223,10 +223,11 @@ Any website can add the chat bubble with one line — no build step:
 ```
 
 Optional attributes: `data-api` (API host, defaults to the script's origin),
-`data-color` (accent colour), `data-logo` (a logo image URL for the header),
-`data-position` (`left` or `right`, default `right`), `data-telegram` (a
-`t.me/...` link for the "continue on Telegram" handoff). Preview it at
-`https://<your-app>/widget/demo`.
+`data-color` (header colour), `data-accent` (buttons/bubbles/launcher — defaults
+to `data-color`), `data-bg` (chat background), `data-logo` (a logo image URL for
+the header), `data-position` (`left` or `right`, default `right`),
+`data-telegram` (a `t.me/...` link for the "continue on Telegram" handoff).
+Preview it at `https://<your-app>/widget/demo`.
 
 **Contact-gate (lead capture):** set `ASKDESK_REQUIRE_CONTACT=true` and the widget
 asks for an email/phone **before** an AI answer, saving it as a lead — great for

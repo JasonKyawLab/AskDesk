@@ -2,8 +2,14 @@
  * Embed with:
  *   <script src="https://YOUR-HOST/widget.js"
  *           data-key="PUBLIC_API_KEY"
- *           data-api="https://YOUR-HOST"     (optional; defaults to this script's origin)
- *           data-color="#0D7A5F"></script>   (optional accent colour)
+ *           data-api="https://YOUR-HOST"   (optional; defaults to this script's origin)
+ *           data-color="#0D7A5F"           (optional; header colour)
+ *           data-accent="#0D7A5F"          (optional; buttons/bubbles/launcher — defaults to data-color)
+ *           data-bg="#F7F7F5"              (optional; chat background)
+ *           data-logo="https://…/logo.png" (optional; header logo)
+ *           data-position="right"          (optional; left | right)
+ *           data-telegram="https://t.me/…" (optional; "continue on Telegram" link)
+ *   ></script>
  */
 (function () {
   "use strict";
@@ -11,7 +17,9 @@
   if (!script) return;
   var API = (script.getAttribute("data-api") || new URL(script.src).origin).replace(/\/+$/, "");
   var KEY = script.getAttribute("data-key") || "";
-  var COLOR = script.getAttribute("data-color") || "#0D7A5F";
+  var COLOR = script.getAttribute("data-color") || "#0D7A5F"; // header
+  var ACCENT = script.getAttribute("data-accent") || COLOR;   // launcher/buttons/user bubbles
+  var BG = script.getAttribute("data-bg") || "#F7F7F5";       // chat background
   var TELEGRAM = script.getAttribute("data-telegram") || ""; // optional t.me/... handoff link
   var LOGO = script.getAttribute("data-logo") || "";         // optional header logo URL
   var POS = script.getAttribute("data-position") === "left" ? "left" : "right";
@@ -36,7 +44,7 @@
 
   // ---- styles ----
   var css = "\
-.adk-btn{position:fixed;bottom:20px;width:56px;height:56px;border-radius:50%;background:$C;color:#fff;border:0;cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.25);z-index:2147483000;display:flex;align-items:center;justify-content:center;transition:transform .15s}\
+.adk-btn{position:fixed;bottom:20px;width:56px;height:56px;border-radius:50%;background:$A;color:#fff;border:0;cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.25);z-index:2147483000;display:flex;align-items:center;justify-content:center;transition:transform .15s}\
 .adk-btn:hover{transform:scale(1.05)}\
 .adk-btn.adk-right{right:20px}.adk-btn.adk-left{left:20px}\
 .adk-panel{position:fixed;bottom:88px;width:370px;max-width:calc(100vw - 32px);height:560px;max-height:calc(100vh - 120px);background:#fff;border-radius:16px;box-shadow:0 12px 48px rgba(0,0,0,.22);z-index:2147483000;display:none;flex-direction:column;overflow:hidden;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}\
@@ -47,27 +55,27 @@
 .adk-logo{width:26px;height:26px;border-radius:6px;object-fit:cover;background:#fff;flex:none}\
 .adk-hd b{font-size:15px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}\
 .adk-x{background:none;border:0;color:#fff;opacity:.85;font-size:20px;cursor:pointer;line-height:1}\
-.adk-body{flex:1;overflow-y:auto;background:#F7F7F5;padding:14px}\
+.adk-body{flex:1;overflow-y:auto;background:$BG;padding:14px}\
 .adk-msg{max-width:82%;padding:9px 12px;border-radius:14px;font-size:14px;line-height:1.5;margin-bottom:10px;white-space:pre-wrap;word-wrap:break-word}\
 .adk-bot{background:#fff;border:1px solid #ececec;color:#1a1a1a;border-bottom-left-radius:4px}\
-.adk-me{background:$C;color:#fff;margin-left:auto;border-bottom-right-radius:4px}\
+.adk-me{background:$A;color:#fff;margin-left:auto;border-bottom-right-radius:4px}\
 .adk-chips{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:10px}\
 .adk-chip{background:#fff;border:1px solid #ddd;color:#1a1a1a;border-radius:999px;padding:7px 12px;font-size:13px;cursor:pointer}\
-.adk-chip:hover{border-color:$C}\
+.adk-chip:hover{border-color:$A}\
 .adk-form{background:#fff;border:1px solid #ececec;border-radius:12px;padding:12px;margin-bottom:10px}\
 .adk-form p{margin:0 0 8px;font-size:13px;color:#444}\
 .adk-form input{width:100%;box-sizing:border-box;padding:9px;font:inherit;font-size:14px;border:1px solid #ccc;border-radius:8px;margin-bottom:8px}\
-.adk-form button{background:$C;color:#fff;border:0;border-radius:8px;padding:9px 14px;font-size:14px;cursor:pointer;width:100%}\
-.adk-tg{display:block;text-align:center;margin-top:8px;font-size:13px;color:$C;text-decoration:none}\
+.adk-form button{background:$A;color:#fff;border:0;border-radius:8px;padding:9px 14px;font-size:14px;cursor:pointer;width:100%}\
+.adk-tg{display:block;text-align:center;margin-top:8px;font-size:13px;color:$A;text-decoration:none}\
 .adk-foot{flex:none;text-align:center;padding:7px;font-size:11px;color:#9a9a9a;border-top:1px solid #eee;background:#fff}\
 .adk-foot a{color:#9a9a9a;text-decoration:none}\
 .adk-brand{display:inline-flex;align-items:center;vertical-align:middle;margin-left:2px}\
 .adk-brand svg{height:12px;width:auto;display:block}\
 .adk-in{flex:none;display:flex;gap:8px;padding:10px;border-top:1px solid #eee;background:#fff}\
 .adk-in input{flex:1;border:1px solid #ddd;border-radius:10px;padding:9px 11px;font:inherit;font-size:14px}\
-.adk-in button{background:$C;color:#fff;border:0;border-radius:10px;padding:0 14px;font-size:14px;cursor:pointer}\
+.adk-in button{background:$A;color:#fff;border:0;border-radius:10px;padding:0 14px;font-size:14px;cursor:pointer}\
 .adk-in button:disabled{opacity:.5}\
-".replace(/\$C/g, COLOR);
+".replace(/\$C/g, COLOR).replace(/\$A/g, ACCENT).replace(/\$BG/g, BG);
   var s = document.createElement("style"); s.textContent = css; document.head.appendChild(s);
 
   // ---- DOM ----
