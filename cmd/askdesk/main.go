@@ -98,7 +98,7 @@ func run() error {
 			SourceURL:      cfg.SourceURL,
 			RequireContact: cfg.RequireContact,
 		}, log))
-		srv.Mount("/api/v1/admin/", webapi.NewAdmin(adminStore, deliverer, bizStore, log))
+		srv.Mount("/api/v1/admin/", webapi.NewAdmin(adminStore, leadStore, deliverer, bizStore, log))
 
 		// Embeddable web widget: one-line <script> any site can drop in.
 		wdg := widget.New()
@@ -166,7 +166,7 @@ func run() error {
 
 		// Magic-link web admin: FAQs, settings, and pending-question handoff.
 		if cfg.MagicLinkSecret != "" {
-			ed := editor.NewHandler(faqStore, bizStore, adminStore, deliverer, signer,
+			ed := editor.NewHandler(faqStore, bizStore, adminStore, leadStore, deliverer, signer,
 				cfg.IsProduction() || strings.HasPrefix(cfg.PublicURL, "https"), log)
 			srv.Mount("GET /edit", http.HandlerFunc(ed.HandleEdit))
 			srv.Mount("POST /edit/faqs", http.HandlerFunc(ed.HandleCreate))

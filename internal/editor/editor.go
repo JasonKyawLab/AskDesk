@@ -49,11 +49,17 @@ type Deliverer interface {
 	Deliver(ctx context.Context, channel core.Channel, replyTo, text string) error
 }
 
+// LeadStore lists contact details captured by the widget (nil disables the view).
+type LeadStore interface {
+	List(ctx context.Context, businessID int64, limit int) ([]store.Lead, error)
+}
+
 // Handler serves the editor endpoints.
 type Handler struct {
 	faqs      FAQStore
 	settings  SettingsStore
 	admin     AdminStore
+	leads     LeadStore
 	deliverer Deliverer
 	signer    *auth.Signer
 	secure    bool // set Secure on the session cookie (HTTPS deployments)
@@ -62,12 +68,13 @@ type Handler struct {
 }
 
 // NewHandler builds the editor handler. secure should be true in production so
-// the session cookie is only sent over HTTPS.
-func NewHandler(faqs FAQStore, settings SettingsStore, admin AdminStore, deliverer Deliverer, signer *auth.Signer, secure bool, log *slog.Logger) *Handler {
+// the session cookie is only sent over HTTPS. leads may be nil.
+func NewHandler(faqs FAQStore, settings SettingsStore, admin AdminStore, leads LeadStore, deliverer Deliverer, signer *auth.Signer, secure bool, log *slog.Logger) *Handler {
 	return &Handler{
 		faqs:      faqs,
 		settings:  settings,
 		admin:     admin,
+		leads:     leads,
 		deliverer: deliverer,
 		signer:    signer,
 		secure:    secure,
@@ -80,6 +87,7 @@ func NewHandler(faqs FAQStore, settings SettingsStore, admin AdminStore, deliver
 type pageData struct {
 	Settings store.BusinessSettings
 	Pending  []store.PendingQuestion
+	Leads    []store.Lead
 	FAQs     []store.FAQ
 }
 
@@ -118,7 +126,14 @@ func (h *Handler) HandleEdit(w http.ResponseWriter, r *http.Request) {
 		h.serverError(w, "load pending", err)
 		return
 	}
-	h.render(w, pageData{Settings: settings, Pending: pending, FAQs: faqs})
+	var leads []store.Lead
+	if h.leads != nil {
+		if leads, err = h.leads.List(r.Context(), claims.BusinessID, 100); err != nil {
+			h.serverError(w, "load leads", err)
+			return
+		}
+	}
+	h.render(w, pageData{Settings: settings, Pending: pending, Leads: leads, FAQs: faqs})
 }
 
 // HandleReply relays an admin's answer to a pending question's customer (any

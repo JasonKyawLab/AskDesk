@@ -231,7 +231,10 @@ Optional attributes: `data-api` (API host, defaults to the script's origin),
 **Contact-gate (lead capture):** set `ASKDESK_REQUIRE_CONTACT=true` and the widget
 asks for an email/phone **before** an AI answer, saving it as a lead — great for
 lead-gen (e.g. an education agency). Default `false` (a support bot answers
-without asking). Per-business by virtue of per-deployment env.
+without asking). Per-business by virtue of per-deployment env. Captured leads
+appear in the **Leads** section of the `/edit` page (for operators with no
+backend) and via **`GET /api/v1/admin/leads`** (for those building their own UI).
+`/lead` is rate-limited (5/min per visitor, 30/min per business).
 
 ### Answering web customers (handoff)
 When the AI can't answer a web question, it's queued like any other. Reply to it
@@ -255,6 +258,7 @@ backend**, never a browser (the admin key must stay server-side).
 |---|---|
 | `GET /api/v1/admin/stats` | `{total, answered, unanswered}` |
 | `GET /api/v1/admin/pending` | `{pending: [{id, question, customer, created_at}]}` |
+| `GET /api/v1/admin/leads` | `{leads: [{session_id, name, email, phone}]}` — widget contact-gate captures |
 | `POST /api/v1/admin/reply` | body `{id, message}` → delivers to the customer's channel, resolves |
 | `POST /api/v1/admin/dismiss` | body `{id}` → resolve without replying |
 

@@ -54,6 +54,18 @@ const pageTemplate = `<!doctype html>
     </div>
   {{end}}
 
+  <h2>📇 Leads <small>({{len .Leads}})</small></h2>
+  {{if not .Leads}}<p class="empty">No leads captured yet.</p>{{end}}
+  {{range .Leads}}
+    <div class="faq">
+      <div class="q">{{if .Name}}{{.Name}}{{else}}Visitor{{end}}</div>
+      <div class="a">
+        {{if .Email}}✉️ <a href="mailto:{{.Email}}">{{.Email}}</a>{{end}}
+        {{if .Phone}}&nbsp; 📞 {{.Phone}}{{end}}
+      </div>
+    </div>
+  {{end}}
+
   <h2>Business settings</h2>
   <form method="post" action="/edit/settings">
     <label>Shop name
