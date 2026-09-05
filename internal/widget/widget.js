@@ -60,12 +60,13 @@
 .adk-hd b{font-size:15px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}\
 .adk-x{background:none;border:0;color:#fff;opacity:.85;font-size:20px;cursor:pointer;line-height:1}\
 .adk-body{flex:1;overflow-y:auto;background:$BG;padding:14px}\
-.adk-msg{max-width:82%;padding:9px 12px;border-radius:14px;font-size:14px;line-height:1.5;margin-bottom:10px;white-space:pre-wrap;word-wrap:break-word}\
-.adk-bot{background:#fff;border:1px solid #ececec;color:#1a1a1a;border-bottom-left-radius:4px}\
-.adk-me{background:$A;color:#fff;margin-left:auto;border-bottom-right-radius:4px}\
-.adk-chips{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:10px}\
-.adk-chip{background:#fff;border:1px solid #ddd;color:#1a1a1a;border-radius:999px;padding:7px 12px;font-size:13px;cursor:pointer}\
-.adk-chip:hover{border-color:$A}\
+.adk-msg{max-width:76%;padding:9px 12px;border-radius:16px;font-size:14px;line-height:1.5;margin-bottom:8px;white-space:pre-wrap;word-wrap:break-word}\
+.adk-bot{background:#fff;border:1px solid #ececec;color:#1a1a1a;border-bottom-left-radius:5px;box-shadow:0 1px 2px rgba(0,0,0,.05)}\
+.adk-me{background:$A;color:#fff;margin-left:auto;border-bottom-right-radius:5px}\
+.adk-cap{font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:#8a8a8a;margin:4px 2px 8px}\
+.adk-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}\
+.adk-chip{background:#fff;border:1px solid #dcdcdc;color:#333;border-radius:999px;padding:6px 12px;font-size:12.5px;line-height:1.3;cursor:pointer;box-shadow:0 1px 1px rgba(0,0,0,.03);transition:border-color .12s,background .12s}\
+.adk-chip:hover{border-color:$A;background:#fafafa}\
 .adk-form{background:#fff;border:1px solid #ececec;border-radius:12px;padding:12px;margin-bottom:10px}\
 .adk-form p{margin:0 0 8px;font-size:13px;color:#444}\
 .adk-form input{width:100%;box-sizing:border-box;padding:9px;font:inherit;font-size:14px;border:1px solid #ccc;border-radius:8px;margin-bottom:8px}\
@@ -79,9 +80,16 @@
 .adk-brand{display:inline-flex;align-items:center;vertical-align:middle;margin-left:2px}\
 .adk-brand svg{height:12px;width:auto;display:block;fill:#111}\
 .adk-in{flex:none;display:flex;gap:8px;padding:10px;border-top:1px solid #eee;background:#fff}\
-.adk-in input{flex:1;border:1px solid #ddd;border-radius:10px;padding:9px 11px;font:inherit;font-size:14px}\
+.adk-in input{flex:1;border:1px solid #ddd;border-radius:10px;padding:9px 11px;font:inherit;font-size:14px;outline:none}\
+.adk-in input:focus{border-color:$A;box-shadow:0 0 0 3px rgba(0,0,0,.06)}\
 .adk-in button{background:$A;color:#fff;border:0;border-radius:10px;padding:0 14px;font-size:14px;cursor:pointer}\
 .adk-in button:disabled{opacity:.5}\
+@media (max-width:480px){\
+.adk-panel{width:100vw;max-width:100vw;height:100dvh;max-height:100dvh;bottom:0;right:0;left:0;border-radius:0}\
+.adk-panel.adk-right{right:0}.adk-panel.adk-left{left:0}\
+.adk-panel.adk-open ~ .adk-btn{display:none}\
+.adk-hd{padding:16px}.adk-body{padding:14px 12px}\
+}\
 ".replace(/\$C/g, COLOR).replace(/\$A/g, ACCENT).replace(/\$BG/g, BG);
   var s = document.createElement("style"); s.textContent = css; document.head.appendChild(s);
 
@@ -104,18 +112,23 @@
   var send = el("button", null, "Send"); send.type = "submit";
   form.appendChild(input); form.appendChild(send);
   panel.appendChild(head); panel.appendChild(body); panel.appendChild(form); panel.appendChild(foot);
-  document.body.appendChild(btn); document.body.appendChild(panel);
+  // Panel before the launcher so the mobile rule `.adk-panel.adk-open ~ .adk-btn`
+  // can hide the launcher while the full-screen panel is open.
+  document.body.appendChild(panel); document.body.appendChild(btn);
 
   function addMsg(text, who) { var m = el("div", "adk-msg " + (who === "me" ? "adk-me" : "adk-bot"), text); body.appendChild(m); body.scrollTop = body.scrollHeight; return m; }
 
   function showMenu() {
     if (cfg.welcome) addMsg(cfg.welcome, "bot");
     showBrowse();
+    // Keep the greeting in view on open rather than scrolling past it to the chips.
+    body.scrollTop = 0;
   }
-  // Render the category chips at the bottom of the thread (reused by the
-  // header "Browse FAQs" button so users can jump back without scrolling up).
+  // Render the category chips under a small label (reused by the header
+  // "Browse FAQs" button so users can jump back without scrolling up).
   function showBrowse() {
     if (!cfg.categories || !cfg.categories.length) return;
+    body.appendChild(el("div", "adk-cap", "Browse topics"));
     var wrap = el("div", "adk-chips");
     cfg.categories.forEach(function (c) {
       var chip = el("button", "adk-chip", c); chip.type = "button";
