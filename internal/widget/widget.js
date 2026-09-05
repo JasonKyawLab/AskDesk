@@ -13,7 +13,11 @@
  */
 (function () {
   "use strict";
-  var script = document.currentScript;
+  // currentScript works for a normal <script> tag; fall back to finding our tag
+  // by src/data-key so it also works when injected (e.g. via next/script).
+  var script = document.currentScript ||
+    document.querySelector('script[src*="widget.js"][data-key]') ||
+    document.querySelector('script[data-key]');
   if (!script) return;
   var API = (script.getAttribute("data-api") || new URL(script.src).origin).replace(/\/+$/, "");
   var KEY = script.getAttribute("data-key") || "";
