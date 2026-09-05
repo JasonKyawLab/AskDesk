@@ -268,6 +268,7 @@ backend**, never a browser (the admin key must stay server-side).
 | `GET /api/v1/admin/pending` | `{pending: [{id, question, customer, created_at}]}` |
 | `GET /api/v1/admin/leads` | `{leads: [{session_id, name, email, phone}]}` — widget contact-gate captures |
 | `GET /api/v1/admin/lead?session=<id>` | one lead's CRM profile: `{session_id, name, email, phone, messages:[{question, answered, channel, created_at}]}` |
+| `POST /api/v1/admin/lead/delete` | body `{session_id}` → deletes the captured contact (conversation history is kept for analytics) |
 | `GET /api/v1/admin/analytics?days=30` | dashboard aggregates (0 = all time): `{answer_rate:{total,answered,unanswered,answered_pct}, top_questions:[…], top_unanswered:[…], busy_hours:[{hour,count}], busy_days:[{weekday,count}]}` (hours/weekdays are UTC) |
 | `POST /api/v1/admin/reply` | body `{id, message}` → delivers to the customer's channel, resolves |
 | `POST /api/v1/admin/dismiss` | body `{id}` → resolve without replying |

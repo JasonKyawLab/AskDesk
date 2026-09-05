@@ -98,6 +98,16 @@ func (l *Leads) Profile(ctx context.Context, businessID int64, sessionID string)
 	return p, rows.Err()
 }
 
+// Delete removes a lead by session. The visitor's conversation history is left
+// intact (it feeds analytics); only the captured contact is dropped.
+func (l *Leads) Delete(ctx context.Context, businessID int64, sessionID string) error {
+	if _, err := l.pool.Exec(ctx,
+		`DELETE FROM leads WHERE business_id = $1 AND session_id = $2`, businessID, sessionID); err != nil {
+		return fmt.Errorf("delete lead: %w", err)
+	}
+	return nil
+}
+
 // ProfilesList returns up to `limit` leads (newest first) each with the
 // questions their session asked — the CRM view, in a single query.
 func (l *Leads) ProfilesList(ctx context.Context, businessID int64, limit int) ([]LeadProfile, error) {

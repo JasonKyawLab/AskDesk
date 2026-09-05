@@ -70,17 +70,23 @@ func newAdmin(s AdminStore, del Deliverer) *AdminHandler {
 }
 
 type fakeAdminLeads struct {
-	list    []store.Lead
-	profile store.LeadProfile
+	list      []store.Lead
+	profile   store.LeadProfile
+	deleted   string
+	deleteHit bool
 }
 
 func (f fakeAdminLeads) List(context.Context, int64, int) ([]store.Lead, error) { return f.list, nil }
 func (f fakeAdminLeads) Profile(context.Context, int64, string) (store.LeadProfile, error) {
 	return f.profile, nil
 }
+func (f *fakeAdminLeads) Delete(_ context.Context, _ int64, session string) error {
+	f.deleted, f.deleteHit = session, true
+	return nil
+}
 
 func TestAdmin_Leads(t *testing.T) {
-	leads := fakeAdminLeads{list: []store.Lead{{Name: "Aung", Email: "a@b.com", Phone: "09"}}}
+	leads := &fakeAdminLeads{list: []store.Lead{{Name: "Aung", Email: "a@b.com", Phone: "09"}}}
 	h := NewAdmin(&fakeAdminStore{}, leads, nil, &fakeAdminDeliverer{}, fakeAdminAuth{valid: "adminkey"},
 		slog.New(slog.NewTextHandler(io.Discard, nil)))
 	rec := adminReq(h, http.MethodGet, "/api/v1/admin/leads", "adminkey", "")
@@ -190,7 +196,7 @@ func TestAdmin_AnalyticsDisabledWhenNil(t *testing.T) {
 }
 
 func TestAdmin_LeadProfile(t *testing.T) {
-	leads := fakeAdminLeads{profile: store.LeadProfile{
+	leads := &fakeAdminLeads{profile: store.LeadProfile{
 		Lead:     store.Lead{SessionID: "s1", Name: "Aung", Email: "a@b.com"},
 		Messages: []store.LeadMessage{{Question: "hours?", Answered: true, Channel: "widget"}},
 	}}
@@ -206,10 +212,32 @@ func TestAdmin_LeadProfile(t *testing.T) {
 }
 
 func TestAdmin_LeadProfileRequiresSession(t *testing.T) {
-	h := NewAdmin(&fakeAdminStore{}, fakeAdminLeads{}, nil, &fakeAdminDeliverer{},
+	h := NewAdmin(&fakeAdminStore{}, &fakeAdminLeads{}, nil, &fakeAdminDeliverer{},
 		fakeAdminAuth{valid: "adminkey"}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	rec := adminReq(h, http.MethodGet, "/api/v1/admin/lead", "adminkey", "")
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("status = %d, want 400 without session", rec.Code)
+	}
+}
+
+func TestAdmin_LeadDelete(t *testing.T) {
+	leads := &fakeAdminLeads{}
+	h := NewAdmin(&fakeAdminStore{}, leads, nil, &fakeAdminDeliverer{},
+		fakeAdminAuth{valid: "adminkey"}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	rec := adminReq(h, http.MethodPost, "/api/v1/admin/lead/delete", "adminkey", `{"session_id":"s1"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if !leads.deleteHit || leads.deleted != "s1" {
+		t.Errorf("delete not called correctly: %+v", leads)
+	}
+}
+
+func TestAdmin_LeadDeleteRequiresSession(t *testing.T) {
+	h := NewAdmin(&fakeAdminStore{}, &fakeAdminLeads{}, nil, &fakeAdminDeliverer{},
+		fakeAdminAuth{valid: "adminkey"}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	rec := adminReq(h, http.MethodPost, "/api/v1/admin/lead/delete", "adminkey", `{}`)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400 without session_id", rec.Code)
 	}
 }

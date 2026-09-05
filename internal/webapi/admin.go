@@ -36,6 +36,7 @@ type AdminAuth interface {
 type AdminLeadStore interface {
 	List(ctx context.Context, businessID int64, limit int) ([]store.Lead, error)
 	Profile(ctx context.Context, businessID int64, sessionID string) (store.LeadProfile, error)
+	Delete(ctx context.Context, businessID int64, sessionID string) error
 }
 
 // AdminAnalyticsStore runs the dashboard aggregate queries (nil disables the
@@ -68,6 +69,7 @@ func NewAdmin(s AdminStore, leads AdminLeadStore, analytics AdminAnalyticsStore,
 	h.mux.HandleFunc("GET /api/v1/admin/pending", h.handlePending)
 	h.mux.HandleFunc("GET /api/v1/admin/leads", h.handleLeads)
 	h.mux.HandleFunc("GET /api/v1/admin/lead", h.handleLeadProfile)
+	h.mux.HandleFunc("POST /api/v1/admin/lead/delete", h.handleLeadDelete)
 	h.mux.HandleFunc("GET /api/v1/admin/analytics", h.handleAnalytics)
 	h.mux.HandleFunc("POST /api/v1/admin/reply", h.handleReply)
 	h.mux.HandleFunc("POST /api/v1/admin/dismiss", h.handleDismiss)
@@ -179,6 +181,28 @@ func (h *AdminHandler) handleLeadProfile(w http.ResponseWriter, r *http.Request)
 		"session_id": p.SessionID, "name": p.Name, "email": p.Email, "phone": p.Phone,
 		"messages": msgs,
 	})
+}
+
+type leadDeleteRequest struct {
+	SessionID string `json:"session_id"`
+}
+
+// handleLeadDelete removes one captured lead. POST /api/v1/admin/lead/delete
+func (h *AdminHandler) handleLeadDelete(w http.ResponseWriter, r *http.Request) {
+	if h.leads == nil {
+		writeError(w, http.StatusNotFound, "no such lead")
+		return
+	}
+	var req leadDeleteRequest
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&req); err != nil || strings.TrimSpace(req.SessionID) == "" {
+		writeError(w, http.StatusBadRequest, "session_id is required")
+		return
+	}
+	if err := h.leads.Delete(r.Context(), businessID(r.Context()), req.SessionID); err != nil {
+		h.serverError(w, "delete lead", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
 // handleAnalytics returns the dashboard aggregates over a window (?days=30,
