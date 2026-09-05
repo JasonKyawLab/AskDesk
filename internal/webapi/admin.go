@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -30,9 +31,20 @@ type AdminAuth interface {
 	IDByAdminKey(ctx context.Context, adminKey string) (int64, error)
 }
 
-// AdminLeadStore lists captured widget leads (nil returns an empty list).
+// AdminLeadStore lists captured widget leads and builds a single lead's CRM
+// profile (nil returns an empty list and 404s profiles).
 type AdminLeadStore interface {
 	List(ctx context.Context, businessID int64, limit int) ([]store.Lead, error)
+	Profile(ctx context.Context, businessID int64, sessionID string) (store.LeadProfile, error)
+}
+
+// AdminAnalyticsStore runs the dashboard aggregate queries (nil disables the
+// analytics endpoint).
+type AdminAnalyticsStore interface {
+	AnswerRate(ctx context.Context, businessID int64, days int) (store.AnswerStats, error)
+	TopQuestions(ctx context.Context, businessID int64, days, limit int, onlyUnanswered bool) ([]store.QuestionCount, error)
+	BusyHours(ctx context.Context, businessID int64, days int) ([]store.HourBucket, error)
+	BusyDays(ctx context.Context, businessID int64, days int) ([]store.DayBucket, error)
 }
 
 // AdminHandler serves the privileged /api/v1/admin endpoints so a frontend can
@@ -42,18 +54,21 @@ type AdminLeadStore interface {
 type AdminHandler struct {
 	store     AdminStore
 	leads     AdminLeadStore
+	analytics AdminAnalyticsStore
 	deliverer Deliverer
 	auth      AdminAuth
 	log       *slog.Logger
 	mux       *http.ServeMux
 }
 
-// NewAdmin builds the admin API handler. leads may be nil.
-func NewAdmin(s AdminStore, leads AdminLeadStore, deliverer Deliverer, auth AdminAuth, log *slog.Logger) *AdminHandler {
-	h := &AdminHandler{store: s, leads: leads, deliverer: deliverer, auth: auth, log: log, mux: http.NewServeMux()}
+// NewAdmin builds the admin API handler. leads and analytics may be nil.
+func NewAdmin(s AdminStore, leads AdminLeadStore, analytics AdminAnalyticsStore, deliverer Deliverer, auth AdminAuth, log *slog.Logger) *AdminHandler {
+	h := &AdminHandler{store: s, leads: leads, analytics: analytics, deliverer: deliverer, auth: auth, log: log, mux: http.NewServeMux()}
 	h.mux.HandleFunc("GET /api/v1/admin/stats", h.handleStats)
 	h.mux.HandleFunc("GET /api/v1/admin/pending", h.handlePending)
 	h.mux.HandleFunc("GET /api/v1/admin/leads", h.handleLeads)
+	h.mux.HandleFunc("GET /api/v1/admin/lead", h.handleLeadProfile)
+	h.mux.HandleFunc("GET /api/v1/admin/analytics", h.handleAnalytics)
 	h.mux.HandleFunc("POST /api/v1/admin/reply", h.handleReply)
 	h.mux.HandleFunc("POST /api/v1/admin/dismiss", h.handleDismiss)
 	return h
@@ -131,6 +146,115 @@ func (h *AdminHandler) handleLeads(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"leads": out})
+}
+
+// handleLeadProfile returns one lead plus the questions their session asked.
+// GET /api/v1/admin/lead?session=<session_id>
+func (h *AdminHandler) handleLeadProfile(w http.ResponseWriter, r *http.Request) {
+	session := strings.TrimSpace(r.URL.Query().Get("session"))
+	if session == "" {
+		writeError(w, http.StatusBadRequest, "session is required")
+		return
+	}
+	if h.leads == nil {
+		writeError(w, http.StatusNotFound, "no such lead")
+		return
+	}
+	p, err := h.leads.Profile(r.Context(), businessID(r.Context()), session)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "no such lead")
+		return
+	}
+	msgs := make([]map[string]any, 0, len(p.Messages))
+	for _, m := range p.Messages {
+		created := ""
+		if !m.CreatedAt.IsZero() {
+			created = m.CreatedAt.UTC().Format(time.RFC3339)
+		}
+		msgs = append(msgs, map[string]any{
+			"question": m.Question, "answered": m.Answered, "channel": m.Channel, "created_at": created,
+		})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"session_id": p.SessionID, "name": p.Name, "email": p.Email, "phone": p.Phone,
+		"messages": msgs,
+	})
+}
+
+// handleAnalytics returns the dashboard aggregates over a window (?days=30,
+// default 30; 0 = all time). GET /api/v1/admin/analytics
+func (h *AdminHandler) handleAnalytics(w http.ResponseWriter, r *http.Request) {
+	if h.analytics == nil {
+		writeError(w, http.StatusNotFound, "analytics unavailable")
+		return
+	}
+	days := 30
+	if v := strings.TrimSpace(r.URL.Query().Get("days")); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+			days = n
+		}
+	}
+	id := businessID(r.Context())
+	rate, err := h.analytics.AnswerRate(r.Context(), id, days)
+	if err != nil {
+		h.serverError(w, "analytics rate", err)
+		return
+	}
+	top, err := h.analytics.TopQuestions(r.Context(), id, days, 10, false)
+	if err != nil {
+		h.serverError(w, "analytics top", err)
+		return
+	}
+	gaps, err := h.analytics.TopQuestions(r.Context(), id, days, 10, true)
+	if err != nil {
+		h.serverError(w, "analytics gaps", err)
+		return
+	}
+	hours, err := h.analytics.BusyHours(r.Context(), id, days)
+	if err != nil {
+		h.serverError(w, "analytics hours", err)
+		return
+	}
+	dayb, err := h.analytics.BusyDays(r.Context(), id, days)
+	if err != nil {
+		h.serverError(w, "analytics days", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"days": days,
+		"answer_rate": map[string]any{
+			"total": rate.Total, "answered": rate.Answered,
+			"unanswered": rate.Unanswered, "answered_pct": rate.AnsweredPct(),
+		},
+		"top_questions":  questionCounts(top),
+		"top_unanswered": questionCounts(gaps),
+		"busy_hours":     hourBuckets(hours),
+		"busy_days":      dayBuckets(dayb),
+	})
+}
+
+func questionCounts(in []store.QuestionCount) []map[string]any {
+	out := make([]map[string]any, 0, len(in))
+	for _, q := range in {
+		out = append(out, map[string]any{"question": q.Question, "count": q.Count, "unanswered": q.Unanswered})
+	}
+	return out
+}
+
+func hourBuckets(in []store.HourBucket) []map[string]any {
+	out := make([]map[string]any, 0, len(in))
+	for _, b := range in {
+		out = append(out, map[string]any{"hour": b.Hour, "count": b.Count})
+	}
+	return out
+}
+
+func dayBuckets(in []store.DayBucket) []map[string]any {
+	out := make([]map[string]any, 0, len(in))
+	for _, b := range in {
+		out = append(out, map[string]any{"weekday": b.Weekday, "count": b.Count})
+	}
+	return out
 }
 
 type replyRequest struct {

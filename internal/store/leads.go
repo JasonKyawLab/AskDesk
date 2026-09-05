@@ -2,10 +2,15 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+// ErrNoLead is returned when no lead exists for a given session.
+var ErrNoLead = errors.New("no lead for session")
 
 // Lead is a captured web-widget contact.
 type Lead struct {
@@ -43,6 +48,54 @@ func (l *Leads) Upsert(ctx context.Context, businessID int64, sessionID, name, e
 		return fmt.Errorf("upsert lead: %w", err)
 	}
 	return nil
+}
+
+// LeadMessage is one question a lead's session asked, for the CRM profile view.
+type LeadMessage struct {
+	Question  string
+	Answered  bool
+	Channel   string
+	CreatedAt time.Time
+}
+
+// LeadProfile is a captured contact plus the history of questions their session
+// asked — the CRM view of a single lead.
+type LeadProfile struct {
+	Lead
+	Messages []LeadMessage
+}
+
+// Profile returns a lead and the questions their session asked (newest first),
+// joined by session. Returns ErrNoLead if no lead exists for that session.
+func (l *Leads) Profile(ctx context.Context, businessID int64, sessionID string) (LeadProfile, error) {
+	var p LeadProfile
+	const lq = `
+		SELECT id, session_id, coalesce(name,''), coalesce(email,''), coalesce(phone,'')
+		FROM leads WHERE business_id = $1 AND session_id = $2`
+	err := l.pool.QueryRow(ctx, lq, businessID, sessionID).
+		Scan(&p.ID, &p.SessionID, &p.Name, &p.Email, &p.Phone)
+	if err != nil {
+		return LeadProfile{}, ErrNoLead
+	}
+
+	const cq = `
+		SELECT question, was_answered, channel, created_at
+		FROM conversations
+		WHERE business_id = $1 AND external_user_id = $2
+		ORDER BY created_at DESC LIMIT 200`
+	rows, err := l.pool.Query(ctx, cq, businessID, sessionID)
+	if err != nil {
+		return LeadProfile{}, fmt.Errorf("lead history: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var m LeadMessage
+		if err := rows.Scan(&m.Question, &m.Answered, &m.Channel, &m.CreatedAt); err != nil {
+			return LeadProfile{}, fmt.Errorf("scan lead message: %w", err)
+		}
+		p.Messages = append(p.Messages, m)
+	}
+	return p, rows.Err()
 }
 
 // List returns a business's captured leads, newest first (for an admin view).

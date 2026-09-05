@@ -66,16 +66,22 @@ func adminReq(h *AdminHandler, method, path, key, body string) *httptest.Respons
 }
 
 func newAdmin(s AdminStore, del Deliverer) *AdminHandler {
-	return NewAdmin(s, nil, del, fakeAdminAuth{valid: "adminkey"}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	return NewAdmin(s, nil, nil, del, fakeAdminAuth{valid: "adminkey"}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 }
 
-type fakeAdminLeads struct{ list []store.Lead }
+type fakeAdminLeads struct {
+	list    []store.Lead
+	profile store.LeadProfile
+}
 
 func (f fakeAdminLeads) List(context.Context, int64, int) ([]store.Lead, error) { return f.list, nil }
+func (f fakeAdminLeads) Profile(context.Context, int64, string) (store.LeadProfile, error) {
+	return f.profile, nil
+}
 
 func TestAdmin_Leads(t *testing.T) {
 	leads := fakeAdminLeads{list: []store.Lead{{Name: "Aung", Email: "a@b.com", Phone: "09"}}}
-	h := NewAdmin(&fakeAdminStore{}, leads, &fakeAdminDeliverer{}, fakeAdminAuth{valid: "adminkey"},
+	h := NewAdmin(&fakeAdminStore{}, leads, nil, &fakeAdminDeliverer{}, fakeAdminAuth{valid: "adminkey"},
 		slog.New(slog.NewTextHandler(io.Discard, nil)))
 	rec := adminReq(h, http.MethodGet, "/api/v1/admin/leads", "adminkey", "")
 	if rec.Code != http.StatusOK {
@@ -140,5 +146,70 @@ func TestAdmin_Dismiss(t *testing.T) {
 	rec := adminReq(newAdmin(s, &fakeAdminDeliverer{}), http.MethodPost, "/api/v1/admin/dismiss", "adminkey", `{"id":3}`)
 	if rec.Code != http.StatusOK || !s.resolved {
 		t.Errorf("dismiss failed: status=%d resolved=%v", rec.Code, s.resolved)
+	}
+}
+
+type fakeAnalytics struct{}
+
+func (fakeAnalytics) AnswerRate(context.Context, int64, int) (store.AnswerStats, error) {
+	return store.AnswerStats{Total: 10, Answered: 7, Unanswered: 3}, nil
+}
+func (fakeAnalytics) TopQuestions(_ context.Context, _ int64, _, _ int, onlyUnanswered bool) ([]store.QuestionCount, error) {
+	if onlyUnanswered {
+		return []store.QuestionCount{{Question: "do you deliver?", Count: 4, Unanswered: 4}}, nil
+	}
+	return []store.QuestionCount{{Question: "how to sign up?", Count: 9, Unanswered: 0}}, nil
+}
+func (fakeAnalytics) BusyHours(context.Context, int64, int) ([]store.HourBucket, error) {
+	return []store.HourBucket{{Hour: 14, Count: 5}}, nil
+}
+func (fakeAnalytics) BusyDays(context.Context, int64, int) ([]store.DayBucket, error) {
+	return []store.DayBucket{{Weekday: 1, Count: 6}}, nil
+}
+
+func TestAdmin_Analytics(t *testing.T) {
+	h := NewAdmin(&fakeAdminStore{}, nil, fakeAnalytics{}, &fakeAdminDeliverer{},
+		fakeAdminAuth{valid: "adminkey"}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	rec := adminReq(h, http.MethodGet, "/api/v1/admin/analytics?days=30", "adminkey", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	body := rec.Body.String()
+	for _, want := range []string{`"answered_pct":70`, "how to sign up?", "do you deliver?", `"hour":14`, `"weekday":1`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("analytics body missing %q: %s", want, body)
+		}
+	}
+}
+
+func TestAdmin_AnalyticsDisabledWhenNil(t *testing.T) {
+	rec := adminReq(newAdmin(&fakeAdminStore{}, &fakeAdminDeliverer{}), http.MethodGet, "/api/v1/admin/analytics", "adminkey", "")
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want 404 when analytics nil", rec.Code)
+	}
+}
+
+func TestAdmin_LeadProfile(t *testing.T) {
+	leads := fakeAdminLeads{profile: store.LeadProfile{
+		Lead:     store.Lead{SessionID: "s1", Name: "Aung", Email: "a@b.com"},
+		Messages: []store.LeadMessage{{Question: "hours?", Answered: true, Channel: "widget"}},
+	}}
+	h := NewAdmin(&fakeAdminStore{}, leads, nil, &fakeAdminDeliverer{},
+		fakeAdminAuth{valid: "adminkey"}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	rec := adminReq(h, http.MethodGet, "/api/v1/admin/lead?session=s1", "adminkey", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "hours?") || !strings.Contains(rec.Body.String(), "a@b.com") {
+		t.Errorf("profile body wrong: %s", rec.Body.String())
+	}
+}
+
+func TestAdmin_LeadProfileRequiresSession(t *testing.T) {
+	h := NewAdmin(&fakeAdminStore{}, fakeAdminLeads{}, nil, &fakeAdminDeliverer{},
+		fakeAdminAuth{valid: "adminkey"}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	rec := adminReq(h, http.MethodGet, "/api/v1/admin/lead", "adminkey", "")
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400 without session", rec.Code)
 	}
 }

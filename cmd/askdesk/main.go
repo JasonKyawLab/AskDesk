@@ -75,6 +75,7 @@ func run() error {
 		adminStore := store.NewAdmins(pool)
 		webReplies := store.NewWebReplies(pool)
 		leadStore := store.NewLeads(pool)
+		analyticsStore := store.NewAnalytics(pool)
 		conversations := store.NewConversations(pool)
 		engine := core.NewEngine(faqStore, genProvider, conversations, bizStore, log, cfg.AIEnabled)
 		if !cfg.AIEnabled {
@@ -98,7 +99,7 @@ func run() error {
 			SourceURL:      cfg.SourceURL,
 			ContactCapture: cfg.ContactCapture,
 		}, log))
-		srv.Mount("/api/v1/admin/", webapi.NewAdmin(adminStore, leadStore, deliverer, bizStore, log))
+		srv.Mount("/api/v1/admin/", webapi.NewAdmin(adminStore, leadStore, analyticsStore, deliverer, bizStore, log))
 
 		// Embeddable web widget: one-line <script> any site can drop in.
 		wdg := widget.New()
