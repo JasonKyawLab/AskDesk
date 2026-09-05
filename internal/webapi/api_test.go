@@ -52,9 +52,23 @@ func (f fakeReplies) Since(context.Context, int64, string, int64) ([]store.WebRe
 	return f.list, nil
 }
 
+type fakeLeads struct {
+	businessID            int64
+	session, email, phone string
+	called                bool
+}
+
+func (f *fakeLeads) Upsert(_ context.Context, businessID int64, session, name, email, phone string) error {
+	f.called = true
+	f.businessID, f.session, f.email, f.phone = businessID, session, email, phone
+	return nil
+}
+
+func discardLog() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }
+
 func newAPI(engine Engine, faqs FAQStore) *Handler {
-	return New(engine, faqs, fakeBiz{valid: "goodkey"}, fakeReplies{}, []string{"*"}, "",
-		slog.New(slog.NewTextHandler(io.Discard, nil)))
+	return New(engine, faqs, fakeBiz{valid: "goodkey"}, fakeReplies{}, &fakeLeads{},
+		Options{AllowedOrigins: []string{"*"}}, discardLog())
 }
 
 func do(h *Handler, method, path, key, body string) *httptest.ResponseRecorder {
@@ -133,8 +147,8 @@ func TestAPI_Ask(t *testing.T) {
 
 func TestAPI_AskRateLimited(t *testing.T) {
 	h := New(fakeEngine{reply: core.Reply{Text: "ok", Answered: true}}, fakeFAQs{},
-		fakeBiz{valid: "goodkey", rate: 2}, fakeReplies{}, []string{"*"}, "",
-		slog.New(slog.NewTextHandler(io.Discard, nil)))
+		fakeBiz{valid: "goodkey", rate: 2}, fakeReplies{}, &fakeLeads{},
+		Options{AllowedOrigins: []string{"*"}}, discardLog())
 	body := `{"message":"q","session_id":"s"}`
 
 	for i := 0; i < 2; i++ {
@@ -158,7 +172,7 @@ func TestAPI_AskEmptyMessage(t *testing.T) {
 func TestAPI_Replies(t *testing.T) {
 	h := New(fakeEngine{}, fakeFAQs{}, fakeBiz{valid: "goodkey"},
 		fakeReplies{list: []store.WebReply{{ID: 3, Message: "Yes, we deliver."}}},
-		[]string{"*"}, "", slog.New(slog.NewTextHandler(io.Discard, nil)))
+		&fakeLeads{}, Options{AllowedOrigins: []string{"*"}}, discardLog())
 
 	rec := do(h, http.MethodGet, "/api/v1/replies?session_id=s1&since=0", "goodkey", "")
 	if rec.Code != http.StatusOK {
@@ -173,6 +187,40 @@ func TestAPI_RepliesRequiresSession(t *testing.T) {
 	rec := do(newAPI(fakeEngine{}, fakeFAQs{}), http.MethodGet, "/api/v1/replies", "goodkey", "")
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("status = %d, want 400 without session_id", rec.Code)
+	}
+}
+
+func TestAPI_Lead(t *testing.T) {
+	leads := &fakeLeads{}
+	h := New(fakeEngine{}, fakeFAQs{}, fakeBiz{valid: "goodkey"}, fakeReplies{}, leads,
+		Options{AllowedOrigins: []string{"*"}}, discardLog())
+
+	rec := do(h, http.MethodPost, "/api/v1/lead", "goodkey", `{"session_id":"s1","email":"a@b.com"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if !leads.called || leads.email != "a@b.com" || leads.session != "s1" {
+		t.Errorf("lead not saved correctly: %+v", leads)
+	}
+}
+
+func TestAPI_LeadRequiresContact(t *testing.T) {
+	rec := do(newAPI(fakeEngine{}, fakeFAQs{}), http.MethodPost, "/api/v1/lead", "goodkey", `{"session_id":"s1"}`)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400 without email/phone", rec.Code)
+	}
+}
+
+func TestAPI_ConfigExposesContactAndSource(t *testing.T) {
+	h := New(fakeEngine{}, fakeFAQs{}, fakeBiz{valid: "goodkey"}, fakeReplies{}, &fakeLeads{},
+		Options{AllowedOrigins: []string{"*"}, SourceURL: "https://example.com/src", RequireContact: true}, discardLog())
+	rec := do(h, http.MethodGet, "/api/v1/config", "goodkey", "")
+	body := rec.Body.String()
+	if !strings.Contains(body, `"require_contact":true`) {
+		t.Errorf("config should expose require_contact: %s", body)
+	}
+	if !strings.Contains(body, `"source_url":"https://example.com/src"`) {
+		t.Errorf("config should expose source_url: %s", body)
 	}
 }
 
