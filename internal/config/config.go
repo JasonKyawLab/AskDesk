@@ -40,6 +40,10 @@ type Config struct {
 
 	// Reply engine.
 	AIEnabled bool // false = FAQ-only mode: no AI, free-typed questions go to a human
+
+	// Data retention & licensing.
+	RetentionDays int    // delete conversations older than this many days (0 = keep forever)
+	SourceURL     string // AGPL source link, surfaced in /api/v1/config
 }
 
 // Load reads configuration from the environment, applying development-friendly
@@ -65,6 +69,15 @@ func Load() (*Config, error) {
 		PublicURL:   getEnv("ASKDESK_PUBLIC_URL", getEnv("RENDER_EXTERNAL_URL", "")),
 		CORSOrigins: splitCSV(getEnv("ASKDESK_CORS_ORIGINS", "*")),
 		AIEnabled:   getEnvBool("ASKDESK_AI_ENABLED", true),
+		SourceURL:   getEnv("ASKDESK_SOURCE_URL", "https://github.com/JasonKyawLab/AskDesk"),
+	}
+
+	if v := getEnv("ASKDESK_RETENTION_DAYS", ""); v != "" {
+		days, err := strconv.Atoi(v)
+		if err != nil || days < 0 {
+			return nil, fmt.Errorf("ASKDESK_RETENTION_DAYS must be a non-negative number: %q", v)
+		}
+		cfg.RetentionDays = days
 	}
 
 	// Port falls back to PORT (which Render and many PaaS hosts inject).

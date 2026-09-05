@@ -53,7 +53,7 @@ func (f fakeReplies) Since(context.Context, int64, string, int64) ([]store.WebRe
 }
 
 func newAPI(engine Engine, faqs FAQStore) *Handler {
-	return New(engine, faqs, fakeBiz{valid: "goodkey"}, fakeReplies{}, []string{"*"},
+	return New(engine, faqs, fakeBiz{valid: "goodkey"}, fakeReplies{}, []string{"*"}, "",
 		slog.New(slog.NewTextHandler(io.Discard, nil)))
 }
 
@@ -133,7 +133,7 @@ func TestAPI_Ask(t *testing.T) {
 
 func TestAPI_AskRateLimited(t *testing.T) {
 	h := New(fakeEngine{reply: core.Reply{Text: "ok", Answered: true}}, fakeFAQs{},
-		fakeBiz{valid: "goodkey", rate: 2}, fakeReplies{}, []string{"*"},
+		fakeBiz{valid: "goodkey", rate: 2}, fakeReplies{}, []string{"*"}, "",
 		slog.New(slog.NewTextHandler(io.Discard, nil)))
 	body := `{"message":"q","session_id":"s"}`
 
@@ -158,7 +158,7 @@ func TestAPI_AskEmptyMessage(t *testing.T) {
 func TestAPI_Replies(t *testing.T) {
 	h := New(fakeEngine{}, fakeFAQs{}, fakeBiz{valid: "goodkey"},
 		fakeReplies{list: []store.WebReply{{ID: 3, Message: "Yes, we deliver."}}},
-		[]string{"*"}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+		[]string{"*"}, "", slog.New(slog.NewTextHandler(io.Discard, nil)))
 
 	rec := do(h, http.MethodGet, "/api/v1/replies?session_id=s1&since=0", "goodkey", "")
 	if rec.Code != http.StatusOK {

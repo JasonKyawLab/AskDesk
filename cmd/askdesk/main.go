@@ -73,11 +73,15 @@ func run() error {
 		bizStore := store.NewBusinesses(pool)
 		adminStore := store.NewAdmins(pool)
 		webReplies := store.NewWebReplies(pool)
-		engine := core.NewEngine(faqStore, genProvider, store.NewConversations(pool), bizStore, log, cfg.AIEnabled)
+		conversations := store.NewConversations(pool)
+		engine := core.NewEngine(faqStore, genProvider, conversations, bizStore, log, cfg.AIEnabled)
 		if !cfg.AIEnabled {
 			log.Info("FAQ-only mode: AI disabled, free-typed questions go to a human")
 		}
 		deliverer := app.NewChannelDeliverer(cfg, webReplies)
+
+		// Data retention: delete conversations older than the configured limit.
+		app.StartRetention(context.Background(), conversations, cfg.RetentionDays, log)
 
 		var signer *auth.Signer
 		if cfg.MagicLinkSecret != "" {
@@ -87,7 +91,7 @@ func run() error {
 		// Web API (JSON channel) — available whenever the database is present.
 		// Public (customer) endpoints under /api/v1, admin endpoints under
 		// /api/v1/admin (separate X-Admin-Key, no CORS — backend only).
-		srv.Mount("/api/v1/", webapi.New(engine, faqStore, bizStore, webReplies, cfg.CORSOrigins, log))
+		srv.Mount("/api/v1/", webapi.New(engine, faqStore, bizStore, webReplies, cfg.CORSOrigins, cfg.SourceURL, log))
 		srv.Mount("/api/v1/admin/", webapi.NewAdmin(adminStore, deliverer, bizStore, log))
 		log.Info("web api enabled")
 

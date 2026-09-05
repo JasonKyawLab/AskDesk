@@ -13,6 +13,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/JasonKyawLab/AskDesk/internal/app"
@@ -38,6 +39,7 @@ func run() error {
 	path := flag.String("file", "", "path to a JSON file of FAQs")
 	reset := flag.Bool("reset", false, "delete the business's existing FAQs before loading")
 	delay := flag.Duration("delay", 6*time.Second, "pause between inserts (to respect AI rate limits)")
+	retries := flag.Int("retries", 5, "max attempts per FAQ when the AI returns a transient error")
 	flag.Parse()
 
 	if *path == "" {
@@ -92,7 +94,7 @@ func run() error {
 			fmt.Printf("  [%d/%d] skipped (empty)\n", i+1, len(faqs))
 			continue
 		}
-		id, err := faqStore.Create(ctx, cfg.BusinessID, f.Question, f.Answer, f.Category)
+		id, err := createWithRetry(ctx, faqStore, cfg.BusinessID, f, *retries)
 		if err != nil {
 			return fmt.Errorf("faq %d (%q): %w", i+1, f.Question, err)
 		}
@@ -103,4 +105,47 @@ func run() error {
 	}
 	fmt.Println("Done.")
 	return nil
+}
+
+// createWithRetry embeds and inserts one FAQ, retrying with backoff when the AI
+// returns a transient error (e.g. a 503/overload). A single Gemini hiccup used
+// to abort the whole batch mid-load; now it just costs a short wait.
+func createWithRetry(ctx context.Context, faqs *store.FAQs, businessID int64, f faqInput, attempts int) (int64, error) {
+	if attempts < 1 {
+		attempts = 1
+	}
+	var lastErr error
+	for attempt := 1; attempt <= attempts; attempt++ {
+		id, err := faqs.Create(ctx, businessID, f.Question, f.Answer, f.Category)
+		if err == nil {
+			return id, nil
+		}
+		lastErr = err
+		if attempt == attempts || !isTransient(err) {
+			break
+		}
+		wait := time.Duration(attempt) * 5 * time.Second // 5s, 10s, 15s, ...
+		fmt.Printf("      transient AI error (attempt %d/%d): %v\n      retrying in %s...\n", attempt, attempts, err, wait)
+		select {
+		case <-ctx.Done():
+			return 0, ctx.Err()
+		case <-time.After(wait):
+		}
+	}
+	return 0, lastErr
+}
+
+// isTransient reports whether an error is worth retrying (a temporary AI/network
+// hiccup) rather than a permanent failure (bad request, auth).
+func isTransient(err error) bool {
+	s := strings.ToLower(err.Error())
+	for _, m := range []string{
+		"503", "500", "502", "504", "429", "unavailable", "overloaded",
+		"timeout", "deadline", "temporarily", "connection reset", "eof",
+	} {
+		if strings.Contains(s, m) {
+			return true
+		}
+	}
+	return false
 }

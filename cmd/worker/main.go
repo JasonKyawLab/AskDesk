@@ -53,14 +53,16 @@ func run() error {
 	}
 
 	genProvider, embedder := app.BuildAI(cfg, log)
+	conversations := store.NewConversations(pool)
 	engine := core.NewEngine(
 		store.NewFAQs(pool, embedder),
 		genProvider,
-		store.NewConversations(pool),
+		conversations,
 		store.NewBusinesses(pool),
 		log,
 		cfg.AIEnabled,
 	)
+	app.StartRetention(context.Background(), conversations, cfg.RetentionDays, log)
 
 	var signer *auth.Signer
 	if cfg.MagicLinkSecret != "" {
