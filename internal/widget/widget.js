@@ -35,7 +35,7 @@
   if (!session) { session = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Math.random()).slice(2) + Date.now(); store("askdesk_session", session); }
   var contactDone = store("askdesk_lead_" + KEY) === "1";
 
-  var cfg = { business_name: "Support", welcome: "", require_contact: false, source_url: "", categories: [] };
+  var cfg = { business_name: "Support", welcome: "", contact_capture: "off", source_url: "", categories: [] };
   var faqs = [];        // [{name, faqs:[{id,question,answer}]}]
   var lastReplyId = 0, open = false, sending = false, gating = false, pollTimer = null;
 
@@ -150,7 +150,11 @@
   function ask(text) {
     var pending = addMsg("…", "bot"); sending = true; send.disabled = true;
     api("/api/v1/ask", { method: "POST", body: JSON.stringify({ message: text, session_id: session }) })
-      .then(function (d) { pending.textContent = d.answer || ""; })
+      .then(function (d) {
+        pending.textContent = d.answer || "";
+        // handoff mode: the AI couldn't answer, so collect contact for follow-up.
+        if (cfg.contact_capture === "handoff" && d.answered === false && !contactDone) { askContact(function () {}); }
+      })
       .catch(function () { pending.textContent = "Sorry, something went wrong. Please try again."; })
       .then(function () { sending = false; send.disabled = false; });
   }
@@ -160,7 +164,8 @@
     var text = input.value.trim();
     if (!text || sending || gating) return;
     input.value = ""; addMsg(text, "me");
-    if (cfg.require_contact && !contactDone) { askContact(function () { ask(text); }); }
+    // always mode: gate the first message behind contact capture.
+    if (cfg.contact_capture === "always" && !contactDone) { askContact(function () { ask(text); }); }
     else { ask(text); }
   };
 

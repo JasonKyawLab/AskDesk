@@ -229,11 +229,11 @@ func TestAPI_LeadRequiresContact(t *testing.T) {
 
 func TestAPI_ConfigExposesContactAndSource(t *testing.T) {
 	h := New(fakeEngine{}, fakeFAQs{}, fakeBiz{valid: "goodkey"}, fakeReplies{}, &fakeLeads{},
-		Options{AllowedOrigins: []string{"*"}, SourceURL: "https://example.com/src", RequireContact: true}, discardLog())
+		Options{AllowedOrigins: []string{"*"}, SourceURL: "https://example.com/src", ContactCapture: "handoff"}, discardLog())
 	rec := do(h, http.MethodGet, "/api/v1/config", "goodkey", "")
 	body := rec.Body.String()
-	if !strings.Contains(body, `"require_contact":true`) {
-		t.Errorf("config should expose require_contact: %s", body)
+	if !strings.Contains(body, `"contact_capture":"handoff"`) {
+		t.Errorf("config should expose contact_capture: %s", body)
 	}
 	if !strings.Contains(body, `"source_url":"https://example.com/src"`) {
 		t.Errorf("config should expose source_url: %s", body)

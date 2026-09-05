@@ -96,7 +96,7 @@ func run() error {
 		srv.Mount("/api/v1/", webapi.New(engine, faqStore, bizStore, webReplies, leadStore, webapi.Options{
 			AllowedOrigins: cfg.CORSOrigins,
 			SourceURL:      cfg.SourceURL,
-			RequireContact: cfg.RequireContact,
+			ContactCapture: cfg.ContactCapture,
 		}, log))
 		srv.Mount("/api/v1/admin/", webapi.NewAdmin(adminStore, leadStore, deliverer, bizStore, log))
 

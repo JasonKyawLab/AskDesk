@@ -39,8 +39,8 @@ type Config struct {
 	CORSOrigins []string // allowed origins for the /api/v1 endpoints ("*" = any)
 
 	// Reply engine.
-	AIEnabled      bool // false = FAQ-only mode: no AI, free-typed questions go to a human
-	RequireContact bool // widget asks for email/phone before an AI answer (lead-gen)
+	AIEnabled      bool   // false = FAQ-only mode: no AI, free-typed questions go to a human
+	ContactCapture string // widget contact-gate: "off" | "always" | "handoff"
 
 	// Data retention & licensing.
 	RetentionDays int    // delete conversations older than this many days (0 = keep forever)
@@ -67,11 +67,25 @@ func Load() (*Config, error) {
 		MessengerAPIURL:       getEnv("ASKDESK_MESSENGER_API_URL", ""),
 		MagicLinkSecret:       getEnv("ASKDESK_MAGIC_LINK_SECRET", ""),
 		// PublicURL falls back to Render's auto-injected RENDER_EXTERNAL_URL.
-		PublicURL:      getEnv("ASKDESK_PUBLIC_URL", getEnv("RENDER_EXTERNAL_URL", "")),
-		CORSOrigins:    splitCSV(getEnv("ASKDESK_CORS_ORIGINS", "*")),
-		AIEnabled:      getEnvBool("ASKDESK_AI_ENABLED", true),
-		RequireContact: getEnvBool("ASKDESK_REQUIRE_CONTACT", false),
-		SourceURL:      getEnv("ASKDESK_SOURCE_URL", "https://github.com/JasonKyawLab/AskDesk"),
+		PublicURL:   getEnv("ASKDESK_PUBLIC_URL", getEnv("RENDER_EXTERNAL_URL", "")),
+		CORSOrigins: splitCSV(getEnv("ASKDESK_CORS_ORIGINS", "*")),
+		AIEnabled:   getEnvBool("ASKDESK_AI_ENABLED", true),
+		SourceURL:   getEnv("ASKDESK_SOURCE_URL", "https://github.com/JasonKyawLab/AskDesk"),
+	}
+
+	// Contact-gate mode: off | always | handoff. ASKDESK_REQUIRE_CONTACT=true is
+	// a legacy alias for "always".
+	switch cc := strings.ToLower(getEnv("ASKDESK_CONTACT_CAPTURE", "")); cc {
+	case "always", "handoff", "off":
+		cfg.ContactCapture = cc
+	case "":
+		if getEnvBool("ASKDESK_REQUIRE_CONTACT", false) {
+			cfg.ContactCapture = "always"
+		} else {
+			cfg.ContactCapture = "off"
+		}
+	default:
+		return nil, fmt.Errorf("ASKDESK_CONTACT_CAPTURE must be off, always, or handoff: %q", cc)
 	}
 
 	if v := getEnv("ASKDESK_RETENTION_DAYS", ""); v != "" {
