@@ -200,11 +200,35 @@
       }).catch(function () {});
   }
 
+  // On phones the panel is full-screen. position:fixed + dvh can't track the
+  // iOS keyboard, so we size the panel to the VisualViewport (the area not
+  // covered by the keyboard) — the input stays visible and the thread scrolls
+  // behind it, the way Intercom/Crisp behave.
+  var vv = window.visualViewport;
+  function isMobileView() { return window.matchMedia("(max-width:480px)").matches; }
+  function syncViewport() {
+    if (open && isMobileView() && vv) {
+      panel.style.top = vv.offsetTop + "px";
+      panel.style.height = vv.height + "px";
+      panel.style.bottom = "auto";
+      body.scrollTop = body.scrollHeight;
+    } else {
+      panel.style.top = panel.style.height = panel.style.bottom = "";
+    }
+  }
+  if (vv) { vv.addEventListener("resize", syncViewport); vv.addEventListener("scroll", syncViewport); }
+
   function toggle(v) {
     open = v == null ? !open : v;
     panel.classList.toggle("adk-open", open);
-    if (open) { input.focus(); if (!pollTimer) pollTimer = setInterval(poll, 5000); }
-    else if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+    if (open) {
+      if (!isMobileView()) input.focus(); // avoid popping the keyboard the instant a phone opens the panel
+      syncViewport();
+      if (!pollTimer) pollTimer = setInterval(poll, 5000);
+    } else {
+      syncViewport();
+      if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+    }
   }
   btn.onclick = function () { toggle(); };
   xbtn.onclick = function () { toggle(false); };

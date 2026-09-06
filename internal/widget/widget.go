@@ -28,7 +28,7 @@ func New() *Handler { return &Handler{} }
 // public, non-secret JavaScript embedded on customer sites).
 func (h *Handler) ServeScript(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
-	w.Header().Set("Cache-Control", "public, max-age=600")
+	w.Header().Set("Cache-Control", "public, max-age=120")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	http.ServeContent(w, r, "widget.js", start, bytes.NewReader(widgetJS))
 }
