@@ -156,6 +156,24 @@ var templateFuncs = template.FuncMap{
 		}
 		return t.UTC().Format("Jan 2, 15:04")
 	},
+	"langName": func(code string) string {
+		switch strings.ToLower(code) {
+		case "en":
+			return "English"
+		case "my":
+			return "မြန်မာ (Myanmar)"
+		case "zh":
+			return "中文 (Chinese)"
+		case "th":
+			return "ไทย (Thai)"
+		case "ja":
+			return "日本語 (Japanese)"
+		case "ko":
+			return "한국어 (Korean)"
+		default:
+			return strings.ToUpper(code)
+		}
+	},
 }
 
 func hourLabel(h int) string {

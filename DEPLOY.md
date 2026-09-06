@@ -79,6 +79,23 @@ conversations older than 90 days (runs on boot, then daily). `0`/unset keeps
 everything. Since each business runs its own deployment, this is per-business.
 Good for privacy and keeping the database small.
 
+**Languages (optional):** FAQs are English-only by default. To offer more, set
+`ASKDESK_LANGUAGES` to a comma-separated list (e.g. `en,my,zh`) and optionally
+`ASKDESK_DEFAULT_LANGUAGE` (the one the widget opens in; defaults to the first).
+The widget shows a language switcher **only when more than one is enabled**.
+
+Each language is authored **separately** — no machine translation, so answers
+keep a native tone. Write each language's FAQs yourself:
+
+- **Bulk load:** `make load-faqs file=faqs.my.json lang=my` (or add a per-FAQ
+  `"language"` field in the JSON). `reset=1` clears only that language's set.
+- **`/edit`:** language tabs appear at the top when multiple are enabled; each
+  tab authors that language's FAQs.
+
+RAG retrieval, the browse menu, and the AI answer are all scoped to the chosen
+language (the model is told to answer in it). Write Burmese in **Unicode**, not
+Zawgyi. Telegram/Messenger serve `ASKDESK_DEFAULT_LANGUAGE`.
+
 **FAQ-only mode (no AI):** AI is **on by default** (unset = enabled). Set
 `ASKDESK_AI_ENABLED=false` to run without any AI.
 The button menu (tap category → question → answer) still works fully; free-typed

@@ -35,14 +35,21 @@
   if (!session) { session = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Math.random()).slice(2) + Date.now(); store("askdesk_session", session); }
   var contactDone = store("askdesk_lead_" + KEY) === "1";
 
-  var cfg = { business_name: "Support", welcome: "", contact_capture: "off", source_url: "", categories: [] };
+  var cfg = { business_name: "Support", welcome: "", contact_capture: "off", source_url: "", categories: [], languages: ["en"], default_language: "en" };
   var faqs = [];        // [{name, faqs:[{id,question,answer}]}]
+  var LANG = store("askdesk_lang_" + KEY) || "";  // chosen language; resolved after config
   var lastReplyId = 0, open = false, sending = false, gating = false, pollTimer = null;
 
   function api(path, opts) {
     opts = opts || {};
     opts.headers = Object.assign({ "Content-Type": "application/json", "X-API-Key": KEY }, opts.headers || {});
     return fetch(API + path, opts).then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); });
+  }
+  // Append ?lang= to a GET path when a language is chosen.
+  function withLang(path) { return LANG ? path + (path.indexOf("?") < 0 ? "?" : "&") + "lang=" + encodeURIComponent(LANG) : path; }
+  // Short label for a language code shown on the switcher.
+  function langLabel(code) {
+    return { en: "EN", my: "မြန်မာ", zh: "中文", th: "ไทย", ja: "日本語", ko: "한국어", vi: "VI", es: "ES", fr: "FR" }[code] || code.toUpperCase();
   }
   function el(tag, cls, txt) { var e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; }
 
@@ -77,6 +84,8 @@
 .adk-acts{display:flex;align-items:center;gap:8px;flex:none}\
 .adk-browse{background:none;border:1px solid rgba(255,255,255,.45);color:#fff;font-size:12px;padding:4px 10px;border-radius:8px;cursor:pointer;white-space:nowrap;line-height:1.2}\
 .adk-browse:hover{background:rgba(255,255,255,.14)}\
+.adk-lang{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.45);color:#fff;font-size:12px;padding:4px 6px;border-radius:8px;cursor:pointer;line-height:1.2;-webkit-appearance:none;appearance:none}\
+.adk-lang option{color:#111}\
 .adk-brand{display:inline-flex;align-items:center;vertical-align:middle;margin-left:2px}\
 .adk-brand svg{height:10px;width:auto;display:block;fill:#111}\
 .adk-in{flex:none;display:flex;gap:8px;padding:10px;border-top:1px solid #eee;background:#fff}\
@@ -103,7 +112,8 @@
   var title = el("b", null, "Support"); hdl.appendChild(title);
   var browse = el("button", "adk-browse", "Browse FAQs"); browse.type = "button";
   var xbtn = el("button", "adk-x", "×");
-  var acts = el("div", "adk-acts"); acts.appendChild(browse); acts.appendChild(xbtn);
+  var langSel = el("select", "adk-lang"); langSel.style.display = "none"; langSel.setAttribute("aria-label", "Language");
+  var acts = el("div", "adk-acts"); acts.appendChild(langSel); acts.appendChild(browse); acts.appendChild(xbtn);
   head.appendChild(hdl); head.appendChild(acts);
   var body = el("div", "adk-body");
   var foot = el("div", "adk-foot");
@@ -172,7 +182,7 @@
 
   function ask(text) {
     var pending = addMsg("…", "bot"); sending = true; send.disabled = true;
-    api("/api/v1/ask", { method: "POST", body: JSON.stringify({ message: text, session_id: session }) })
+    api("/api/v1/ask", { method: "POST", body: JSON.stringify({ message: text, session_id: session, lang: LANG }) })
       .then(function (d) {
         pending.textContent = d.answer || "";
         // handoff mode: the AI couldn't answer, so collect contact for follow-up.
@@ -240,14 +250,39 @@
       LOGO_SVG + '</a>';
   }
 
+  // Populate + show the language switcher when more than one language is offered.
+  function setupLangSwitcher() {
+    var langs = cfg.languages || ["en"];
+    if (!LANG) LANG = cfg.default_language || langs[0] || "en";
+    if (langs.indexOf(LANG) < 0) LANG = cfg.default_language || langs[0] || "en";
+    if (langs.length < 2) { langSel.style.display = "none"; return; }
+    langSel.innerHTML = "";
+    langs.forEach(function (code) {
+      var o = el("option", null, langLabel(code)); o.value = code; langSel.appendChild(o);
+    });
+    langSel.value = LANG;
+    langSel.style.display = "";
+  }
+  langSel.onchange = function () {
+    LANG = langSel.value; store("askdesk_lang_" + KEY, LANG);
+    body.innerHTML = ""; // reset the thread and re-render in the new language
+    loadThread();
+  };
+
+  // (Re)load config + FAQs for the current language and render the opening menu.
+  function loadThread() {
+    return Promise.all([api(withLang("/api/v1/config")), api(withLang("/api/v1/faqs")).catch(function () { return { categories: [] }; })])
+      .then(function (res) {
+        cfg = Object.assign(cfg, res[0]);
+        faqs = (res[1].categories) || [];
+        title.textContent = cfg.business_name || "Support";
+        foot.innerHTML = brandHTML(cfg.source_url);
+        setupLangSwitcher();
+        showMenu();
+      })
+      .catch(function () { foot.innerHTML = brandHTML(""); addMsg("Chat is unavailable right now.", "bot"); });
+  }
+
   // ---- boot ----
-  Promise.all([api("/api/v1/config"), api("/api/v1/faqs").catch(function () { return { categories: [] }; })])
-    .then(function (res) {
-      cfg = Object.assign(cfg, res[0]);
-      faqs = (res[1].categories) || [];
-      title.textContent = cfg.business_name || "Support";
-      foot.innerHTML = brandHTML(cfg.source_url);
-      showMenu();
-    })
-    .catch(function () { foot.innerHTML = brandHTML(""); addMsg("Chat is unavailable right now.", "bot"); });
+  loadThread();
 })();

@@ -50,6 +50,10 @@ const pageTemplate = `<!doctype html>
   details.lead li { margin: .15rem 0; }
   .qa { color: #16a34a; } .qu { color: #dc2626; }
   .muted { opacity: .55; font-size: .78rem; }
+  .langs { display: flex; gap: .4rem; margin: .5rem 0; flex-wrap: wrap; }
+  .langs a { font-size: .8rem; padding: .3rem .75rem; border: 1px solid #8886; border-radius: 999px;
+             text-decoration: none; color: inherit; opacity: .7; }
+  .langs a.on { background: #2563eb; color: #fff; border-color: #2563eb; opacity: 1; }
 </style>
 </head>
 <body>
@@ -150,8 +154,17 @@ const pageTemplate = `<!doctype html>
     <button class="primary" type="submit">Save settings</button>
   </form>
 
-  <h2>Add a FAQ</h2>
+  {{if .MultiLang}}
+  <h2>FAQ language</h2>
+  <div class="langs">
+    {{range .Languages}}<a class="{{if eq . $.CurrentLang}}on{{end}}" href="/edit?lang={{.}}">{{langName .}}</a>{{end}}
+  </div>
+  <p class="muted">Editing the <b>{{langName .CurrentLang}}</b> set — each language is authored separately in its own tone.</p>
+  {{end}}
+
+  <h2>Add a FAQ{{if .MultiLang}} <small class="muted">· {{langName .CurrentLang}}</small>{{end}}</h2>
   <form method="post" action="/edit/faqs">
+    <input type="hidden" name="lang" value="{{.CurrentLang}}">
     <label>Question
       <input name="question" required autocomplete="off">
     </label>
@@ -164,12 +177,13 @@ const pageTemplate = `<!doctype html>
     <button class="primary" type="submit">Add FAQ</button>
   </form>
 
-  <h2>Existing FAQs</h2>
+  <h2>Existing FAQs{{if .MultiLang}} <small class="muted">· {{langName .CurrentLang}}</small>{{end}}</h2>
   {{if not .FAQs}}<p class="empty">No FAQs yet.</p>{{end}}
   {{range .FAQs}}
     <div class="faq">
       <form method="post" action="/edit/faqs/update">
         <input type="hidden" name="id" value="{{.ID}}">
+        <input type="hidden" name="lang" value="{{$.CurrentLang}}">
         <label>Question
           <input name="question" value="{{.Question}}" required autocomplete="off">
         </label>
@@ -183,6 +197,7 @@ const pageTemplate = `<!doctype html>
       </form>
       <form method="post" action="/edit/faqs/delete" onsubmit="return confirm('Delete this FAQ?')">
         <input type="hidden" name="id" value="{{.ID}}">
+        <input type="hidden" name="lang" value="{{$.CurrentLang}}">
         <button class="del" type="submit">Delete</button>
       </form>
     </div>
