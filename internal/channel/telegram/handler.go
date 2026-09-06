@@ -33,6 +33,7 @@ type Handler struct {
 	panel      *AdminPanel   // nil disables the admin panel
 	settings   SettingsStore // nil uses built-in default copy
 	businessID int64
+	lang       string // FAQ language this channel serves (deployment default)
 	secret     string
 	log        *slog.Logger
 }
@@ -45,7 +46,10 @@ type SettingsStore interface {
 // NewHandler builds the webhook handler. secret is the Telegram webhook secret
 // token; an empty secret disables verification (development only). menu,
 // menuClient, panel, and settings may be nil, which disables those features.
-func NewHandler(submitter Submitter, menu MenuStore, menuClient MenuClient, panel *AdminPanel, settings SettingsStore, businessID int64, secret string, log *slog.Logger) *Handler {
+func NewHandler(submitter Submitter, menu MenuStore, menuClient MenuClient, panel *AdminPanel, settings SettingsStore, businessID int64, language, secret string, log *slog.Logger) *Handler {
+	if language == "" {
+		language = "en"
+	}
 	return &Handler{
 		submitter:  submitter,
 		menu:       menu,
@@ -53,6 +57,7 @@ func NewHandler(submitter Submitter, menu MenuStore, menuClient MenuClient, pane
 		panel:      panel,
 		settings:   settings,
 		businessID: businessID,
+		lang:       language,
 		secret:     secret,
 		log:        log,
 	}

@@ -26,6 +26,7 @@ type faqInput struct {
 	Category string `json:"category"`
 	Question string `json:"question"`
 	Answer   string `json:"answer"`
+	Language string `json:"language"` // optional per-FAQ override; falls back to -lang
 }
 
 func main() {
@@ -37,13 +38,18 @@ func main() {
 
 func run() error {
 	path := flag.String("file", "", "path to a JSON file of FAQs")
-	reset := flag.Bool("reset", false, "delete the business's existing FAQs before loading")
+	reset := flag.Bool("reset", false, "delete existing FAQs (for -lang only) before loading")
+	lang := flag.String("lang", "en", "language code for FAQs without a per-FAQ \"language\" field (e.g. en, my, zh)")
 	delay := flag.Duration("delay", 6*time.Second, "pause between inserts (to respect AI rate limits)")
 	retries := flag.Int("retries", 5, "max attempts per FAQ when the AI returns a transient error")
 	flag.Parse()
 
 	if *path == "" {
-		return fmt.Errorf("usage: loadfaqs -file faqs.json [-reset] [-delay 6s]")
+		return fmt.Errorf("usage: loadfaqs -file faqs.json [-lang en] [-reset] [-delay 6s]")
+	}
+	*lang = strings.ToLower(strings.TrimSpace(*lang))
+	if *lang == "" {
+		*lang = "en"
 	}
 
 	cfg, err := config.Load()
@@ -79,10 +85,12 @@ func run() error {
 	}
 
 	if *reset {
-		if _, err := pool.Exec(ctx, "DELETE FROM faqs WHERE business_id = $1", cfg.BusinessID); err != nil {
+		// Reset only the language being loaded, so loading Myanmar FAQs doesn't
+		// wipe the English set (and vice-versa).
+		if _, err := pool.Exec(ctx, "DELETE FROM faqs WHERE business_id = $1 AND language = $2", cfg.BusinessID, *lang); err != nil {
 			return fmt.Errorf("reset: %w", err)
 		}
-		fmt.Printf("Deleted existing FAQs for business %d.\n", cfg.BusinessID)
+		fmt.Printf("Deleted existing %q FAQs for business %d.\n", *lang, cfg.BusinessID)
 	}
 
 	_, embedder := app.BuildAI(cfg, log)
@@ -93,6 +101,9 @@ func run() error {
 		if f.Question == "" || f.Answer == "" {
 			fmt.Printf("  [%d/%d] skipped (empty)\n", i+1, len(faqs))
 			continue
+		}
+		if f.Language == "" {
+			f.Language = *lang
 		}
 		id, err := createWithRetry(ctx, faqStore, cfg.BusinessID, f, *retries)
 		if err != nil {
@@ -116,7 +127,7 @@ func createWithRetry(ctx context.Context, faqs *store.FAQs, businessID int64, f 
 	}
 	var lastErr error
 	for attempt := 1; attempt <= attempts; attempt++ {
-		id, err := faqs.Create(ctx, businessID, f.Question, f.Answer, f.Category)
+		id, err := faqs.Create(ctx, businessID, f.Question, f.Answer, f.Category, f.Language)
 		if err == nil {
 			return id, nil
 		}

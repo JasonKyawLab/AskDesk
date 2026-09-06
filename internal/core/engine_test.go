@@ -15,7 +15,7 @@ type fakeRetriever struct {
 	err     error
 }
 
-func (f *fakeRetriever) Search(context.Context, int64, string, int) ([]Match, error) {
+func (f *fakeRetriever) Search(context.Context, int64, string, string, int) ([]Match, error) {
 	return f.matches, f.err
 }
 
@@ -25,7 +25,7 @@ type fakeAI struct {
 	called bool
 }
 
-func (f *fakeAI) GenerateReply(context.Context, string, []Match) (string, error) {
+func (f *fakeAI) GenerateReply(context.Context, string, string, []Match) (string, error) {
 	f.called = true
 	return f.answer, f.err
 }

@@ -23,10 +23,10 @@ type Engine interface {
 	GenerateCustomerReply(ctx context.Context, msg core.Message) (core.Reply, error)
 }
 
-// FAQStore provides the browsable knowledge base.
+// FAQStore provides the browsable knowledge base, filtered by language.
 type FAQStore interface {
-	Categories(ctx context.Context, businessID int64) ([]string, error)
-	List(ctx context.Context, businessID int64) ([]store.FAQ, error)
+	Categories(ctx context.Context, businessID int64, language string) ([]string, error)
+	List(ctx context.Context, businessID int64, language string) ([]store.FAQ, error)
 }
 
 // BusinessStore authenticates API keys and provides presentation settings.
@@ -56,23 +56,36 @@ type Handler struct {
 	origins        []string // CORS allowlist; "*" allows any origin
 	sourceURL      string   // AGPL: link to the running source, surfaced in /config
 	contactCapture string   // "off"|"always"|"handoff" — surfaced on /config
+	languages      []string // enabled FAQ languages
+	defaultLang    string   // language the widget opens in
 	log            *slog.Logger
 	mux            *http.ServeMux
 }
 
 // Options configures the web API handler.
 type Options struct {
-	AllowedOrigins []string // CORS allowlist ("*" = any; safe since auth is a header key)
-	SourceURL      string   // AGPL source link exposed on /config
-	ContactCapture string   // surfaced on /config so the widget knows when to ask for contact
+	AllowedOrigins  []string // CORS allowlist ("*" = any; safe since auth is a header key)
+	SourceURL       string   // AGPL source link exposed on /config
+	ContactCapture  string   // surfaced on /config so the widget knows when to ask for contact
+	Languages       []string // enabled FAQ languages (defaults to ["en"])
+	DefaultLanguage string   // language the widget opens in (defaults to Languages[0])
 }
 
 // New builds the API handler.
 func New(engine Engine, faqs FAQStore, biz BusinessStore, replies ReplyStore, leads LeadStore, opts Options, log *slog.Logger) *Handler {
+	langs := opts.Languages
+	if len(langs) == 0 {
+		langs = []string{"en"}
+	}
+	def := opts.DefaultLanguage
+	if def == "" {
+		def = langs[0]
+	}
 	h := &Handler{
 		engine: engine, faqs: faqs, biz: biz, replies: replies, leads: leads,
 		limiter: newRateLimiter(), origins: opts.AllowedOrigins, sourceURL: opts.SourceURL,
-		contactCapture: opts.ContactCapture, log: log, mux: http.NewServeMux(),
+		contactCapture: opts.ContactCapture, languages: langs, defaultLang: def,
+		log: log, mux: http.NewServeMux(),
 	}
 	h.mux.HandleFunc("GET /api/v1/config", h.handleConfig)
 	h.mux.HandleFunc("GET /api/v1/faqs", h.handleFAQs)
@@ -110,33 +123,51 @@ func businessID(ctx context.Context) int64 {
 // --- endpoints ---
 
 type configResponse struct {
-	BusinessName   string   `json:"business_name"`
-	Welcome        string   `json:"welcome"`
-	AskPrompt      string   `json:"ask_prompt"`
-	Categories     []string `json:"categories"`
-	ContactCapture string   `json:"contact_capture"`      // off|always|handoff
-	SourceURL      string   `json:"source_url,omitempty"` // AGPL: where the running source lives
+	BusinessName    string   `json:"business_name"`
+	Welcome         string   `json:"welcome"`
+	AskPrompt       string   `json:"ask_prompt"`
+	Categories      []string `json:"categories"`
+	ContactCapture  string   `json:"contact_capture"`      // off|always|handoff
+	Languages       []string `json:"languages"`            // enabled FAQ languages
+	DefaultLanguage string   `json:"default_language"`     // language the widget opens in
+	Language        string   `json:"language"`             // the language this response is for
+	SourceURL       string   `json:"source_url,omitempty"` // AGPL: where the running source lives
+}
+
+// resolveLang returns the requested language if it's enabled, else the default.
+func (h *Handler) resolveLang(requested string) string {
+	requested = strings.ToLower(strings.TrimSpace(requested))
+	for _, l := range h.languages {
+		if l == requested {
+			return requested
+		}
+	}
+	return h.defaultLang
 }
 
 func (h *Handler) handleConfig(w http.ResponseWriter, r *http.Request) {
 	id := businessID(r.Context())
+	lang := h.resolveLang(r.URL.Query().Get("lang"))
 	settings, err := h.biz.Settings(r.Context(), id)
 	if err != nil {
 		h.serverError(w, "settings", err)
 		return
 	}
-	cats, err := h.faqs.Categories(r.Context(), id)
+	cats, err := h.faqs.Categories(r.Context(), id, lang)
 	if err != nil {
 		h.serverError(w, "categories", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, configResponse{
-		BusinessName:   settings.DisplayName,
-		Welcome:        settings.WelcomeMessage,
-		AskPrompt:      settings.AskPrompt,
-		Categories:     emptyIfNil(cats),
-		ContactCapture: h.contactCapture,
-		SourceURL:      h.sourceURL,
+		BusinessName:    settings.DisplayName,
+		Welcome:         settings.WelcomeMessage,
+		AskPrompt:       settings.AskPrompt,
+		Categories:      emptyIfNil(cats),
+		ContactCapture:  h.contactCapture,
+		Languages:       h.languages,
+		DefaultLanguage: h.defaultLang,
+		Language:        lang,
+		SourceURL:       h.sourceURL,
 	})
 }
 
@@ -153,12 +184,13 @@ type faqCategory struct {
 
 func (h *Handler) handleFAQs(w http.ResponseWriter, r *http.Request) {
 	id := businessID(r.Context())
-	cats, err := h.faqs.Categories(r.Context(), id)
+	lang := h.resolveLang(r.URL.Query().Get("lang"))
+	cats, err := h.faqs.Categories(r.Context(), id, lang)
 	if err != nil {
 		h.serverError(w, "categories", err)
 		return
 	}
-	all, err := h.faqs.List(r.Context(), id)
+	all, err := h.faqs.List(r.Context(), id, lang)
 	if err != nil {
 		h.serverError(w, "faqs", err)
 		return
@@ -178,6 +210,7 @@ func (h *Handler) handleFAQs(w http.ResponseWriter, r *http.Request) {
 type askRequest struct {
 	Message   string `json:"message"`
 	SessionID string `json:"session_id"`
+	Language  string `json:"lang"`
 }
 
 type askResponse struct {
@@ -217,6 +250,7 @@ func (h *Handler) handleAsk(w http.ResponseWriter, r *http.Request) {
 		Channel:    core.ChannelWidget,
 		UserID:     session,
 		Text:       req.Message,
+		Language:   h.resolveLang(req.Language),
 	})
 	if err != nil {
 		h.serverError(w, "generate reply", err)

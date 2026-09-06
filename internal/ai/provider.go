@@ -12,5 +12,5 @@ import (
 // Provider is one AI backend that answers a question grounded in FAQ context.
 type Provider interface {
 	Name() string
-	GenerateReply(ctx context.Context, question string, faqs []core.Match) (string, error)
+	GenerateReply(ctx context.Context, question, language string, faqs []core.Match) (string, error)
 }

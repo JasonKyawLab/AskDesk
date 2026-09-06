@@ -13,7 +13,7 @@ import (
 
 type fakeMenuStore struct{ faqs []store.FAQ }
 
-func (f fakeMenuStore) Categories(context.Context, int64) ([]string, error) {
+func (f fakeMenuStore) Categories(context.Context, int64, string) ([]string, error) {
 	seen := map[string]bool{}
 	var cats []string
 	for _, q := range f.faqs {
@@ -25,7 +25,7 @@ func (f fakeMenuStore) Categories(context.Context, int64) ([]string, error) {
 	return cats, nil
 }
 
-func (f fakeMenuStore) ListByCategory(_ context.Context, _ int64, cat string) ([]store.FAQ, error) {
+func (f fakeMenuStore) ListByCategory(_ context.Context, _ int64, cat, _ string) ([]store.FAQ, error) {
 	var out []store.FAQ
 	for _, q := range f.faqs {
 		if q.Category == cat {
@@ -73,7 +73,7 @@ var menuFAQs = []store.FAQ{
 }
 
 func newMenuHandler(rc *recordingClient) *Handler {
-	return NewHandler(&fakeSubmitter{}, fakeMenuStore{faqs: menuFAQs}, rc, nil, nil, 1, "", "v", discardLogger())
+	return NewHandler(&fakeSubmitter{}, fakeMenuStore{faqs: menuFAQs}, rc, nil, nil, 1, "en", "", "v", discardLogger())
 }
 
 func post(h *Handler, body string) {
@@ -124,7 +124,7 @@ func TestMenu_PostbackAnswerSendsFAQ(t *testing.T) {
 func TestMenu_FreeTextStillReachesEngine(t *testing.T) {
 	rc := &recordingClient{}
 	sub := &fakeSubmitter{}
-	h := NewHandler(sub, fakeMenuStore{faqs: menuFAQs}, rc, nil, nil, 1, "", "v", discardLogger())
+	h := NewHandler(sub, fakeMenuStore{faqs: menuFAQs}, rc, nil, nil, 1, "en", "", "v", discardLogger())
 	post(h, `{"entry":[{"messaging":[{"sender":{"id":"U"},"message":{"text":"do you support kbz pay?"}}]}]}`)
 
 	if !sub.called {
@@ -148,7 +148,7 @@ func (f *fakeProfiles) GetProfile(context.Context, string) (string, error) {
 func TestFreeText_ResolvesCustomerName(t *testing.T) {
 	sub := &fakeSubmitter{}
 	prof := &fakeProfiles{name: "Aung Aung"}
-	h := NewHandler(sub, nil, nil, nil, prof, 1, "", "v", discardLogger())
+	h := NewHandler(sub, nil, nil, nil, prof, 1, "en", "", "v", discardLogger())
 
 	body := `{"entry":[{"messaging":[{"sender":{"id":"PSID9"},"message":{"text":"is it free?"}}]}]}`
 	post(h, body)

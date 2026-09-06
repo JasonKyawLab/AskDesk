@@ -8,13 +8,13 @@ import (
 // Retriever finds the FAQs most relevant to a query for a business (RAG lookup).
 // Results are ordered by descending Score.
 type Retriever interface {
-	Search(ctx context.Context, businessID int64, query string, limit int) ([]Match, error)
+	Search(ctx context.Context, businessID int64, query, language string, limit int) ([]Match, error)
 }
 
 // AIProvider generates a natural-language answer grounded in the retrieved FAQs.
 // Implementations form a failover chain, but the engine sees just one provider.
 type AIProvider interface {
-	GenerateReply(ctx context.Context, question string, context []Match) (string, error)
+	GenerateReply(ctx context.Context, question, language string, context []Match) (string, error)
 }
 
 // ConversationStore persists each interaction and flags low-confidence ones.
@@ -91,7 +91,7 @@ func (e *Engine) GenerateCustomerReply(ctx context.Context, msg Message) (Reply,
 		return e.handoff(ctx, msg), nil
 	}
 
-	matches, err := e.retriever.Search(ctx, msg.BusinessID, msg.Text, defaultTopK)
+	matches, err := e.retriever.Search(ctx, msg.BusinessID, msg.Text, msg.Language, defaultTopK)
 	if err != nil {
 		// Retrieval (embedding) is down: hand off gracefully instead of going silent.
 		e.log.Error("faq search failed; handing off", "error", err, "business_id", msg.BusinessID)
@@ -107,7 +107,7 @@ func (e *Engine) GenerateCustomerReply(ctx context.Context, msg Message) (Reply,
 		return e.handoff(ctx, msg), nil
 	}
 
-	answer, err := e.ai.GenerateReply(ctx, msg.Text, matches)
+	answer, err := e.ai.GenerateReply(ctx, msg.Text, msg.Language, matches)
 	if err != nil {
 		// Every AI provider failed (e.g. quota): hand off and flag it.
 		e.log.Error("generate reply failed; handing off", "error", err, "business_id", msg.BusinessID)

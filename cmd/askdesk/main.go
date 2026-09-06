@@ -95,9 +95,11 @@ func run() error {
 		// Public (customer) endpoints under /api/v1, admin endpoints under
 		// /api/v1/admin (separate X-Admin-Key, no CORS — backend only).
 		srv.Mount("/api/v1/", webapi.New(engine, faqStore, bizStore, webReplies, leadStore, webapi.Options{
-			AllowedOrigins: cfg.CORSOrigins,
-			SourceURL:      cfg.SourceURL,
-			ContactCapture: cfg.ContactCapture,
+			AllowedOrigins:  cfg.CORSOrigins,
+			SourceURL:       cfg.SourceURL,
+			ContactCapture:  cfg.ContactCapture,
+			Languages:       cfg.Languages,
+			DefaultLanguage: cfg.DefaultLanguage,
 		}, log))
 		srv.Mount("/api/v1/admin/", webapi.NewAdmin(adminStore, leadStore, analyticsStore, deliverer, bizStore, log))
 
@@ -136,7 +138,7 @@ func run() error {
 				panel := telegram.NewAdminPanel(adminStore, client, deliverer, signer, cfg.PublicURL, cfg.BusinessID, log)
 
 				srv.Mount("POST /webhook/telegram",
-					telegram.NewHandler(submitter, faqStore, client, panel, bizStore, cfg.BusinessID, cfg.TelegramWebhookSecret, log))
+					telegram.NewHandler(submitter, faqStore, client, panel, bizStore, cfg.BusinessID, cfg.DefaultLanguage, cfg.TelegramWebhookSecret, log))
 				log.Info("telegram webhook enabled", "business_id", cfg.BusinessID)
 				if cfg.TelegramWebhookSecret == "" {
 					log.Warn("telegram webhook secret is empty; requests are not verified")
@@ -157,7 +159,7 @@ func run() error {
 				}
 
 				srv.Mount("/webhook/messenger",
-					messenger.NewHandler(submitter, faqStore, mClient, bizStore, mClient, cfg.BusinessID, cfg.MessengerAppSecret, cfg.MessengerVerifyToken, log))
+					messenger.NewHandler(submitter, faqStore, mClient, bizStore, mClient, cfg.BusinessID, cfg.DefaultLanguage, cfg.MessengerAppSecret, cfg.MessengerVerifyToken, log))
 				log.Info("messenger webhook enabled", "business_id", cfg.BusinessID)
 				if cfg.MessengerAppSecret == "" {
 					log.Warn("messenger app secret is empty; requests are not verified")
@@ -167,7 +169,7 @@ func run() error {
 
 		// Magic-link web admin: FAQs, settings, and pending-question handoff.
 		if cfg.MagicLinkSecret != "" {
-			ed := editor.NewHandler(faqStore, bizStore, adminStore, leadStore, analyticsStore, deliverer, signer,
+			ed := editor.NewHandler(faqStore, bizStore, adminStore, leadStore, analyticsStore, deliverer, signer, cfg.Languages,
 				cfg.IsProduction() || strings.HasPrefix(cfg.PublicURL, "https"), log)
 			srv.Mount("GET /edit", http.HandlerFunc(ed.HandleEdit))
 			srv.Mount("POST /edit/faqs", http.HandlerFunc(ed.HandleCreate))
@@ -186,7 +188,7 @@ func run() error {
 		}
 		defer enq.Close()
 		srv.Mount("POST /webhook/telegram",
-			telegram.NewHandler(enq, nil, nil, nil, nil, cfg.BusinessID, cfg.TelegramWebhookSecret, log))
+			telegram.NewHandler(enq, nil, nil, nil, nil, cfg.BusinessID, cfg.DefaultLanguage, cfg.TelegramWebhookSecret, log))
 		log.Info("telegram webhook enabled (thin web tier, queue mode)")
 	}
 

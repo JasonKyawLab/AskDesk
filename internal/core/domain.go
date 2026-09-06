@@ -37,6 +37,7 @@ type Message struct {
 	UserID     string // the user's id within their channel (e.g. Telegram user_id)
 	UserName   string // display name, for admin visibility (may be empty)
 	Text       string
+	Language   string // FAQ language to answer in (e.g. "en", "my", "zh"); "" = default
 }
 
 // Reply is the engine's response to a Message.

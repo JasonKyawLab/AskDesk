@@ -10,6 +10,7 @@ import (
 	"html/template"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -26,10 +27,11 @@ const (
 
 // FAQStore is the FAQ data access the editor needs.
 type FAQStore interface {
-	List(ctx context.Context, businessID int64) ([]store.FAQ, error)
-	Create(ctx context.Context, businessID int64, question, answer, category string) (int64, error)
-	Update(ctx context.Context, businessID, id int64, question, answer, category string) error
+	List(ctx context.Context, businessID int64, language string) ([]store.FAQ, error)
+	Create(ctx context.Context, businessID int64, question, answer, category, language string) (int64, error)
+	Update(ctx context.Context, businessID, id int64, question, answer, category, language string) error
 	Delete(ctx context.Context, businessID, id int64) error
+	Languages(ctx context.Context, businessID int64) ([]string, error)
 }
 
 // SettingsStore is the business-settings access the editor needs.
@@ -73,14 +75,19 @@ type Handler struct {
 	analytics AnalyticsStore
 	deliverer Deliverer
 	signer    *auth.Signer
-	secure    bool // set Secure on the session cookie (HTTPS deployments)
+	languages []string // enabled FAQ languages (for the authoring switcher)
+	secure    bool     // set Secure on the session cookie (HTTPS deployments)
 	log       *slog.Logger
 	tmpl      *template.Template
 }
 
 // NewHandler builds the editor handler. secure should be true in production so
 // the session cookie is only sent over HTTPS. leads and analytics may be nil.
-func NewHandler(faqs FAQStore, settings SettingsStore, admin AdminStore, leads LeadStore, analytics AnalyticsStore, deliverer Deliverer, signer *auth.Signer, secure bool, log *slog.Logger) *Handler {
+// languages is the enabled FAQ language set (defaults to ["en"]).
+func NewHandler(faqs FAQStore, settings SettingsStore, admin AdminStore, leads LeadStore, analytics AnalyticsStore, deliverer Deliverer, signer *auth.Signer, languages []string, secure bool, log *slog.Logger) *Handler {
+	if len(languages) == 0 {
+		languages = []string{"en"}
+	}
 	return &Handler{
 		faqs:      faqs,
 		settings:  settings,
@@ -89,19 +96,34 @@ func NewHandler(faqs FAQStore, settings SettingsStore, admin AdminStore, leads L
 		analytics: analytics,
 		deliverer: deliverer,
 		signer:    signer,
+		languages: languages,
 		secure:    secure,
 		log:       log,
 		tmpl:      template.Must(template.New("page").Funcs(templateFuncs).Parse(pageTemplate)),
 	}
 }
 
+// resolveLang returns the requested language if enabled, else the first enabled.
+func (h *Handler) resolveLang(requested string) string {
+	requested = strings.ToLower(strings.TrimSpace(requested))
+	for _, l := range h.languages {
+		if l == requested {
+			return requested
+		}
+	}
+	return h.languages[0]
+}
+
 // pageData is the editor page model.
 type pageData struct {
-	Settings  store.BusinessSettings
-	Pending   []store.PendingQuestion
-	Leads     []store.LeadProfile
-	FAQs      []store.FAQ
-	Analytics *analyticsView
+	Settings    store.BusinessSettings
+	Pending     []store.PendingQuestion
+	Leads       []store.LeadProfile
+	FAQs        []store.FAQ
+	Analytics   *analyticsView
+	Languages   []string // enabled languages (for the authoring switcher)
+	CurrentLang string   // the language currently being authored
+	MultiLang   bool     // true when more than one language is enabled
 }
 
 // analyticsView is the /edit analytics section, pre-formatted for the template.
@@ -169,7 +191,8 @@ func (h *Handler) HandleEdit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	faqs, err := h.faqs.List(r.Context(), claims.BusinessID)
+	lang := h.resolveLang(r.URL.Query().Get("lang"))
+	faqs, err := h.faqs.List(r.Context(), claims.BusinessID, lang)
 	if err != nil {
 		h.serverError(w, "load faqs", err)
 		return
@@ -196,7 +219,10 @@ func (h *Handler) HandleEdit(w http.ResponseWriter, r *http.Request) {
 		h.serverError(w, "load analytics", err)
 		return
 	}
-	h.render(w, pageData{Settings: settings, Pending: pending, Leads: leads, FAQs: faqs, Analytics: analytics})
+	h.render(w, pageData{
+		Settings: settings, Pending: pending, Leads: leads, FAQs: faqs, Analytics: analytics,
+		Languages: h.languages, CurrentLang: lang, MultiLang: len(h.languages) > 1,
+	})
 }
 
 // buildAnalytics loads and formats the dashboard aggregates (last 30 days).
@@ -332,23 +358,33 @@ func (h *Handler) HandleSettings(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/edit", http.StatusSeeOther)
 }
 
+// redirectEdit returns to the editor, preserving the current language view.
+func (h *Handler) redirectEdit(w http.ResponseWriter, r *http.Request, lang string) {
+	dest := "/edit"
+	if lang != "" && lang != h.languages[0] {
+		dest += "?lang=" + url.QueryEscape(lang)
+	}
+	http.Redirect(w, r, dest, http.StatusSeeOther)
+}
+
 // HandleCreate adds a FAQ from the form.
 func (h *Handler) HandleCreate(w http.ResponseWriter, r *http.Request) {
 	claims, ok := h.requireSession(w, r)
 	if !ok {
 		return
 	}
+	lang := h.resolveLang(r.FormValue("lang"))
 	question := r.FormValue("question")
 	answer := r.FormValue("answer")
 	if question == "" || answer == "" {
-		http.Redirect(w, r, "/edit", http.StatusSeeOther)
+		h.redirectEdit(w, r, lang)
 		return
 	}
-	if _, err := h.faqs.Create(r.Context(), claims.BusinessID, question, answer, r.FormValue("category")); err != nil {
+	if _, err := h.faqs.Create(r.Context(), claims.BusinessID, question, answer, r.FormValue("category"), lang); err != nil {
 		h.serverError(w, "create faq", err)
 		return
 	}
-	http.Redirect(w, r, "/edit", http.StatusSeeOther)
+	h.redirectEdit(w, r, lang)
 }
 
 // HandleUpdate edits an existing FAQ (re-embeds the question).
@@ -357,18 +393,19 @@ func (h *Handler) HandleUpdate(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	lang := h.resolveLang(r.FormValue("lang"))
 	id, err := strconv.ParseInt(r.FormValue("id"), 10, 64)
 	question := r.FormValue("question")
 	answer := r.FormValue("answer")
 	if err != nil || question == "" || answer == "" {
-		http.Redirect(w, r, "/edit", http.StatusSeeOther)
+		h.redirectEdit(w, r, lang)
 		return
 	}
-	if err := h.faqs.Update(r.Context(), claims.BusinessID, id, question, answer, r.FormValue("category")); err != nil {
+	if err := h.faqs.Update(r.Context(), claims.BusinessID, id, question, answer, r.FormValue("category"), lang); err != nil {
 		h.serverError(w, "update faq", err)
 		return
 	}
-	http.Redirect(w, r, "/edit", http.StatusSeeOther)
+	h.redirectEdit(w, r, lang)
 }
 
 // HandleDelete removes a FAQ by id.
@@ -377,16 +414,17 @@ func (h *Handler) HandleDelete(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	lang := h.resolveLang(r.FormValue("lang"))
 	id, err := strconv.ParseInt(r.FormValue("id"), 10, 64)
 	if err != nil {
-		http.Redirect(w, r, "/edit", http.StatusSeeOther)
+		h.redirectEdit(w, r, lang)
 		return
 	}
 	if err := h.faqs.Delete(r.Context(), claims.BusinessID, id); err != nil {
 		h.serverError(w, "delete faq", err)
 		return
 	}
-	http.Redirect(w, r, "/edit", http.StatusSeeOther)
+	h.redirectEdit(w, r, lang)
 }
 
 func (h *Handler) setSession(w http.ResponseWriter, claims auth.Claims) {

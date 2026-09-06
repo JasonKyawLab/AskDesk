@@ -20,7 +20,7 @@ type fakeProvider struct {
 
 func (f *fakeProvider) Name() string { return f.name }
 
-func (f *fakeProvider) GenerateReply(context.Context, string, []core.Match) (string, error) {
+func (f *fakeProvider) GenerateReply(context.Context, string, string, []core.Match) (string, error) {
 	f.calls++
 	return f.answer, f.err
 }
@@ -34,7 +34,7 @@ func TestChain_FirstProviderWins(t *testing.T) {
 	p2 := &fakeProvider{name: "p2", answer: "from p2"}
 	c := NewChain(discardLogger(), p1, p2)
 
-	ans, err := c.GenerateReply(context.Background(), "q", nil)
+	ans, err := c.GenerateReply(context.Background(), "q", "en", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -51,7 +51,7 @@ func TestChain_FailsOverToNext(t *testing.T) {
 	p2 := &fakeProvider{name: "p2", answer: "from p2"}
 	c := NewChain(discardLogger(), p1, p2)
 
-	ans, err := c.GenerateReply(context.Background(), "q", nil)
+	ans, err := c.GenerateReply(context.Background(), "q", "en", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -65,7 +65,7 @@ func TestChain_AllFail(t *testing.T) {
 	p2 := &fakeProvider{name: "p2", err: errors.New("down")}
 	c := NewChain(discardLogger(), p1, p2)
 
-	if _, err := c.GenerateReply(context.Background(), "q", nil); !errors.Is(err, ErrAllProvidersFailed) {
+	if _, err := c.GenerateReply(context.Background(), "q", "en", nil); !errors.Is(err, ErrAllProvidersFailed) {
 		t.Fatalf("error = %v, want ErrAllProvidersFailed", err)
 	}
 }
@@ -82,7 +82,7 @@ func TestChain_CircuitBreakerOpensAndRecovers(t *testing.T) {
 
 	// Two failures should open p1's breaker (p2 answers throughout).
 	for i := 0; i < 2; i++ {
-		if _, err := c.GenerateReply(context.Background(), "q", nil); err != nil {
+		if _, err := c.GenerateReply(context.Background(), "q", "en", nil); err != nil {
 			t.Fatalf("call %d: unexpected error: %v", i, err)
 		}
 	}
@@ -91,14 +91,14 @@ func TestChain_CircuitBreakerOpensAndRecovers(t *testing.T) {
 	}
 
 	// Breaker open: p1 is skipped.
-	_, _ = c.GenerateReply(context.Background(), "q", nil)
+	_, _ = c.GenerateReply(context.Background(), "q", "en", nil)
 	if p1.calls != 2 {
 		t.Errorf("p1 calls = %d, want 2 while circuit open (skipped)", p1.calls)
 	}
 
 	// After cooldown: p1 is tried again.
 	now = now.Add(2 * time.Minute)
-	_, _ = c.GenerateReply(context.Background(), "q", nil)
+	_, _ = c.GenerateReply(context.Background(), "q", "en", nil)
 	if p1.calls != 3 {
 		t.Errorf("p1 calls = %d, want 3 after cooldown expiry", p1.calls)
 	}

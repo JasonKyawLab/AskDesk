@@ -25,8 +25,8 @@ type fakeFAQs struct {
 	list []store.FAQ
 }
 
-func (f fakeFAQs) Categories(context.Context, int64) ([]string, error) { return f.cats, nil }
-func (f fakeFAQs) List(context.Context, int64) ([]store.FAQ, error)    { return f.list, nil }
+func (f fakeFAQs) Categories(context.Context, int64, string) ([]string, error) { return f.cats, nil }
+func (f fakeFAQs) List(context.Context, int64, string) ([]store.FAQ, error)    { return f.list, nil }
 
 type fakeBiz struct {
 	valid        string
@@ -251,5 +251,22 @@ func TestAPI_CORSPreflight(t *testing.T) {
 	}
 	if rec.Header().Get("Access-Control-Allow-Origin") != "https://minipos.site" {
 		t.Errorf("missing CORS origin header: %v", rec.Header())
+	}
+}
+
+func TestAPI_ConfigExposesLanguages(t *testing.T) {
+	h := New(fakeEngine{}, fakeFAQs{}, fakeBiz{valid: "goodkey"}, fakeReplies{}, &fakeLeads{},
+		Options{AllowedOrigins: []string{"*"}, Languages: []string{"en", "my", "zh"}, DefaultLanguage: "my"}, discardLog())
+	rec := do(h, http.MethodGet, "/api/v1/config", "goodkey", "")
+	body := rec.Body.String()
+	for _, want := range []string{`"languages":["en","my","zh"]`, `"default_language":"my"`, `"language":"my"`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("config missing %q: %s", want, body)
+		}
+	}
+	// An unknown requested language falls back to the default.
+	rec = do(h, http.MethodGet, "/api/v1/config?lang=xx", "goodkey", "")
+	if !strings.Contains(rec.Body.String(), `"language":"my"`) {
+		t.Errorf("unknown lang should fall back to default: %s", rec.Body.String())
 	}
 }

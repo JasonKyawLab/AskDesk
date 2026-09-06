@@ -13,8 +13,8 @@ import (
 // MenuStore is the FAQ data the button menu is built from. The menu is fully
 // data-driven: categories become the main menu, questions become buttons.
 type MenuStore interface {
-	Categories(ctx context.Context, businessID int64) ([]string, error)
-	ListByCategory(ctx context.Context, businessID int64, category string) ([]store.FAQ, error)
+	Categories(ctx context.Context, businessID int64, language string) ([]string, error)
+	ListByCategory(ctx context.Context, businessID int64, category, language string) ([]store.FAQ, error)
 	GetByID(ctx context.Context, businessID, id int64) (store.FAQ, error)
 }
 
@@ -90,7 +90,7 @@ func (h *Handler) handleCallback(ctx context.Context, cb *callbackQuery) {
 // mainMenu lists categories (two per row) plus the free-text option. Admins
 // also get an entry into their panel (identity-checked; customers never see it).
 func (h *Handler) mainMenu(ctx context.Context, fromID int64) (string, Keyboard, error) {
-	cats, err := h.menu.Categories(ctx, h.businessID)
+	cats, err := h.menu.Categories(ctx, h.businessID, h.lang)
 	if err != nil {
 		return "", nil, err
 	}
@@ -116,7 +116,7 @@ func (h *Handler) mainMenu(ctx context.Context, fromID int64) (string, Keyboard,
 
 // categoryScreen lists a category's questions, one per row.
 func (h *Handler) categoryScreen(ctx context.Context, category string) (string, Keyboard, error) {
-	faqs, err := h.menu.ListByCategory(ctx, h.businessID, category)
+	faqs, err := h.menu.ListByCategory(ctx, h.businessID, category, h.lang)
 	if err != nil {
 		return "", nil, err
 	}

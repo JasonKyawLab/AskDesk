@@ -25,7 +25,7 @@ func TestGemini_GenerateReply(t *testing.T) {
 	defer srv.Close()
 
 	g := NewGemini("test-key", WithBaseURL(srv.URL), WithHTTPClient(srv.Client()))
-	ans, err := g.GenerateReply(context.Background(), "do you deliver?",
+	ans, err := g.GenerateReply(context.Background(), "do you deliver?", "en",
 		[]core.Match{{Question: "delivery", Answer: "1-2 days"}})
 	if err != nil {
 		t.Fatalf("GenerateReply: %v", err)
@@ -75,7 +75,7 @@ func TestGemini_ErrorStatusFailsOver(t *testing.T) {
 	defer srv.Close()
 
 	g := NewGemini("test-key", WithBaseURL(srv.URL), WithHTTPClient(srv.Client()))
-	if _, err := g.GenerateReply(context.Background(), "hi", nil); err == nil {
+	if _, err := g.GenerateReply(context.Background(), "hi", "en", nil); err == nil {
 		t.Fatal("expected error on 429 status")
 	}
 }

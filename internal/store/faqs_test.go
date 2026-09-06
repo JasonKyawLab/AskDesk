@@ -48,18 +48,18 @@ func TestFAQs_SearchRanksBySimilarityAndIsolatesTenants(t *testing.T) {
 	faqs := NewFAQs(pool, fakeEmbedder{})
 
 	// Business A has two FAQs.
-	if _, err := faqs.Create(ctx, bizA, "what are your delivery times", "1-2 days", "shipping"); err != nil {
+	if _, err := faqs.Create(ctx, bizA, "what are your delivery times", "1-2 days", "shipping", "en"); err != nil {
 		t.Fatalf("create delivery faq: %v", err)
 	}
-	if _, err := faqs.Create(ctx, bizA, "refund policy", "30 days", "billing"); err != nil {
+	if _, err := faqs.Create(ctx, bizA, "refund policy", "30 days", "billing", "en"); err != nil {
 		t.Fatalf("create refund faq: %v", err)
 	}
 	// Business B has its own delivery FAQ that must never leak into A's results.
-	if _, err := faqs.Create(ctx, bizB, "delivery for business B", "SECRET-B", ""); err != nil {
+	if _, err := faqs.Create(ctx, bizB, "delivery for business B", "SECRET-B", "", "en"); err != nil {
 		t.Fatalf("create biz B faq: %v", err)
 	}
 
-	matches, err := faqs.Search(ctx, bizA, "how long is delivery", 5)
+	matches, err := faqs.Search(ctx, bizA, "how long is delivery", "en", 5)
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
@@ -83,7 +83,7 @@ func TestFAQs_SearchRanksBySimilarityAndIsolatesTenants(t *testing.T) {
 	}
 
 	// Menu queries: categories in insertion order, list, and scoped get.
-	cats, err := faqs.Categories(ctx, bizA)
+	cats, err := faqs.Categories(ctx, bizA, "en")
 	if err != nil {
 		t.Fatalf("Categories: %v", err)
 	}
@@ -91,7 +91,7 @@ func TestFAQs_SearchRanksBySimilarityAndIsolatesTenants(t *testing.T) {
 		t.Errorf("categories = %v, want [shipping billing] in insertion order", cats)
 	}
 
-	list, err := faqs.ListByCategory(ctx, bizA, "shipping")
+	list, err := faqs.ListByCategory(ctx, bizA, "shipping", "en")
 	if err != nil {
 		t.Fatalf("ListByCategory: %v", err)
 	}

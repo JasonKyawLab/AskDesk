@@ -77,7 +77,7 @@ func (d *fakePanelDeliverer) Deliver(_ context.Context, ch core.Channel, replyTo
 
 func panelHandler(sub *fakeSubmitter, s *fakeAdminStore, c *fakePanelClient) *Handler {
 	panel := NewAdminPanel(s, c, &fakePanelDeliverer{}, nil, "", 1, discardLogger())
-	return NewHandler(sub, nil, nil, panel, nil, 1, "", discardLogger())
+	return NewHandler(sub, nil, nil, panel, nil, 1, "en", "", discardLogger())
 }
 
 func TestPanel_AdminCommandShowsPanel(t *testing.T) {
@@ -121,7 +121,7 @@ func TestPanel_TapReplyThenTypedMessageRelaysToCustomer(t *testing.T) {
 	client := &fakePanelClient{}
 	del := &fakePanelDeliverer{}
 	panel := NewAdminPanel(s, client, del, nil, "", 1, discardLogger())
-	h := NewHandler(sub, nil, nil, panel, nil, 1, "", discardLogger())
+	h := NewHandler(sub, nil, nil, panel, nil, 1, "en", "", discardLogger())
 
 	// Tap ✍️ Reply on item #4.
 	post(h, `{"callback_query":{"id":"cb1","data":"a:r:4","from":{"id":9},"message":{"message_id":7,"chat":{"id":5}}}}`)
@@ -157,7 +157,7 @@ func TestPanel_ReplyToWebQuestionRoutesToWeb(t *testing.T) {
 	client := &fakePanelClient{}
 	del := &fakePanelDeliverer{}
 	panel := NewAdminPanel(s, client, del, nil, "", 1, discardLogger())
-	h := NewHandler(&fakeSubmitter{}, nil, nil, panel, nil, 1, "", discardLogger())
+	h := NewHandler(&fakeSubmitter{}, nil, nil, panel, nil, 1, "en", "", discardLogger())
 
 	post(h, `{"message":{"text":"We are open 9-6.","chat":{"id":5},"from":{"id":9}}}`)
 
@@ -186,7 +186,7 @@ func TestPanel_AdminGreetingShowsPanelButton(t *testing.T) {
 	sub := &fakeSubmitter{}
 	client := &fakePanelClient{}
 	panel := NewAdminPanel(&fakeAdminStore{admin: true}, client, &fakePanelDeliverer{}, nil, "", 1, discardLogger())
-	h := NewHandler(sub, fakeMenuStore{}, client, panel, nil, 1, "", discardLogger())
+	h := NewHandler(sub, fakeMenuStore{}, client, panel, nil, 1, "en", "", discardLogger())
 
 	post(h, `{"message":{"text":"hi","chat":{"id":5},"from":{"id":9}}}`)
 
@@ -200,7 +200,7 @@ func TestPanel_CustomerGreetingHasNoPanelButton(t *testing.T) {
 	sub := &fakeSubmitter{}
 	client := &fakePanelClient{}
 	panel := NewAdminPanel(&fakeAdminStore{admin: false}, client, &fakePanelDeliverer{}, nil, "", 1, discardLogger())
-	h := NewHandler(sub, fakeMenuStore{}, client, panel, nil, 1, "", discardLogger())
+	h := NewHandler(sub, fakeMenuStore{}, client, panel, nil, 1, "en", "", discardLogger())
 
 	post(h, `{"message":{"text":"hi","chat":{"id":5},"from":{"id":9}}}`)
 

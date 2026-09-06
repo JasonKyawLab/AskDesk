@@ -14,6 +14,6 @@ type StaticProvider struct {
 
 func (StaticProvider) Name() string { return "static" }
 
-func (p StaticProvider) GenerateReply(context.Context, string, []core.Match) (string, error) {
+func (p StaticProvider) GenerateReply(context.Context, string, string, []core.Match) (string, error) {
 	return p.Answer, nil
 }

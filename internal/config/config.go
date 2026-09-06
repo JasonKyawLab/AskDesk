@@ -42,6 +42,11 @@ type Config struct {
 	AIEnabled      bool   // false = FAQ-only mode: no AI, free-typed questions go to a human
 	ContactCapture string // widget contact-gate: "off" | "always" | "handoff"
 
+	// Languages the widget offers. Languages[0]/DefaultLanguage is what the chat
+	// box opens in; the switcher appears only when more than one is enabled.
+	Languages       []string // enabled FAQ languages, e.g. ["en","my","zh"]
+	DefaultLanguage string   // the language the widget opens in (must be in Languages)
+
 	// Data retention & licensing.
 	RetentionDays int    // delete conversations older than this many days (0 = keep forever)
 	SourceURL     string // AGPL source link, surfaced in /api/v1/config
@@ -88,6 +93,17 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("ASKDESK_CONTACT_CAPTURE must be off, always, or handoff: %q", cc)
 	}
 
+	// Languages: enabled set (default English only) and the default the widget
+	// opens in (defaults to the first enabled; must be one of the enabled).
+	cfg.Languages = splitCSV(strings.ToLower(getEnv("ASKDESK_LANGUAGES", "en")))
+	if len(cfg.Languages) == 0 {
+		cfg.Languages = []string{"en"}
+	}
+	cfg.DefaultLanguage = strings.ToLower(getEnv("ASKDESK_DEFAULT_LANGUAGE", cfg.Languages[0]))
+	if !contains(cfg.Languages, cfg.DefaultLanguage) {
+		return nil, fmt.Errorf("ASKDESK_DEFAULT_LANGUAGE %q is not in ASKDESK_LANGUAGES %v", cfg.DefaultLanguage, cfg.Languages)
+	}
+
 	if v := getEnv("ASKDESK_RETENTION_DAYS", ""); v != "" {
 		days, err := strconv.Atoi(v)
 		if err != nil || days < 0 {
@@ -131,6 +147,15 @@ func splitCSV(s string) []string {
 		}
 	}
 	return out
+}
+
+func contains(list []string, v string) bool {
+	for _, s := range list {
+		if s == v {
+			return true
+		}
+	}
+	return false
 }
 
 func getEnv(key, fallback string) string {

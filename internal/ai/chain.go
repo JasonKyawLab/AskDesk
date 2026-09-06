@@ -48,14 +48,14 @@ func NewChain(log *slog.Logger, providers ...Provider) *Chain {
 
 // GenerateReply returns the first successful provider's answer, or
 // ErrAllProvidersFailed if every provider is unavailable or failing.
-func (c *Chain) GenerateReply(ctx context.Context, question string, faqs []core.Match) (string, error) {
+func (c *Chain) GenerateReply(ctx context.Context, question, language string, faqs []core.Match) (string, error) {
 	for i, p := range c.providers {
 		if !c.breakers[i].allow(c.now()) {
 			c.log.Debug("provider skipped: circuit open", "provider", p.Name())
 			continue
 		}
 
-		answer, err := p.GenerateReply(ctx, question, faqs)
+		answer, err := p.GenerateReply(ctx, question, language, faqs)
 		if err != nil {
 			c.log.Warn("provider failed, trying next", "provider", p.Name(), "error", err)
 			c.breakers[i].recordFailure(c.now(), c.maxFailures, c.cooldown)

@@ -14,8 +14,8 @@ import (
 // the main-menu chips; questions become carousel cards. Same shape the Telegram
 // menu uses, so both channels render from one source.
 type MenuStore interface {
-	Categories(ctx context.Context, businessID int64) ([]string, error)
-	ListByCategory(ctx context.Context, businessID int64, category string) ([]store.FAQ, error)
+	Categories(ctx context.Context, businessID int64, language string) ([]string, error)
+	ListByCategory(ctx context.Context, businessID int64, category, language string) ([]store.FAQ, error)
 	GetByID(ctx context.Context, businessID, id int64) (store.FAQ, error)
 }
 
@@ -68,7 +68,7 @@ func (h *Handler) handleMenu(ctx context.Context, recipientID, payload string) {
 
 // showMainMenu lists categories as quick-reply chips, plus an "Ask" option.
 func (h *Handler) showMainMenu(ctx context.Context, recipientID string) {
-	cats, err := h.menu.Categories(ctx, h.businessID)
+	cats, err := h.menu.Categories(ctx, h.businessID, h.lang)
 	if err != nil {
 		h.log.Error("messenger menu: categories failed", "error", err)
 		return
@@ -87,7 +87,7 @@ func (h *Handler) showMainMenu(ctx context.Context, recipientID string) {
 // showCategory sends a carousel of the category's questions, each with a
 // "See answer" button, then quick replies to navigate.
 func (h *Handler) showCategory(ctx context.Context, recipientID, category string) {
-	faqs, err := h.menu.ListByCategory(ctx, h.businessID, category)
+	faqs, err := h.menu.ListByCategory(ctx, h.businessID, category, h.lang)
 	if err != nil {
 		h.log.Error("messenger menu: list category failed", "error", err, "category", category)
 		return

@@ -18,12 +18,15 @@ import (
 
 type fakeFAQs struct{}
 
-func (fakeFAQs) List(context.Context, int64) ([]store.FAQ, error) { return nil, nil }
-func (fakeFAQs) Create(context.Context, int64, string, string, string) (int64, error) {
+func (fakeFAQs) List(context.Context, int64, string) ([]store.FAQ, error) { return nil, nil }
+func (fakeFAQs) Languages(context.Context, int64) ([]string, error)       { return []string{"en"}, nil }
+func (fakeFAQs) Create(context.Context, int64, string, string, string, string) (int64, error) {
 	return 1, nil
 }
-func (fakeFAQs) Update(context.Context, int64, int64, string, string, string) error { return nil }
-func (fakeFAQs) Delete(context.Context, int64, int64) error                         { return nil }
+func (fakeFAQs) Update(context.Context, int64, int64, string, string, string, string) error {
+	return nil
+}
+func (fakeFAQs) Delete(context.Context, int64, int64) error { return nil }
 
 type fakeSettings struct{}
 
@@ -66,7 +69,7 @@ func TestHandleReply_DeliversAndResolves(t *testing.T) {
 	signer := auth.NewSigner("k")
 	adm := &fakeAdmin{target: store.UnansweredTarget{Channel: core.ChannelWidget, ReplyTo: "s1"}}
 	del := &fakeDel{}
-	h := NewHandler(fakeFAQs{}, fakeSettings{}, adm, nil, nil, del, signer, false, discardLogger())
+	h := NewHandler(fakeFAQs{}, fakeSettings{}, adm, nil, nil, del, signer, []string{"en"}, false, discardLogger())
 
 	tok, _ := signer.Sign(auth.Claims{BusinessID: 1, ExpiresAt: time.Now().Add(time.Minute).Unix()})
 	form := url.Values{"id": {"7"}, "message": {"We ship in 2 days."}}
@@ -89,7 +92,7 @@ func TestHandleReply_DeliversAndResolves(t *testing.T) {
 }
 
 func TestHandleReply_NoSessionDenied(t *testing.T) {
-	h := NewHandler(fakeFAQs{}, fakeSettings{}, &fakeAdmin{}, nil, nil, &fakeDel{}, auth.NewSigner("k"), false, discardLogger())
+	h := NewHandler(fakeFAQs{}, fakeSettings{}, &fakeAdmin{}, nil, nil, &fakeDel{}, auth.NewSigner("k"), []string{"en"}, false, discardLogger())
 	req := httptest.NewRequest(http.MethodPost, "/edit/reply", strings.NewReader("id=1&message=hi"))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	rec := httptest.NewRecorder()

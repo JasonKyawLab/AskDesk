@@ -12,11 +12,11 @@ import (
 
 type fakeMenuStore struct{}
 
-func (fakeMenuStore) Categories(context.Context, int64) ([]string, error) {
+func (fakeMenuStore) Categories(context.Context, int64, string) ([]string, error) {
 	return []string{"Getting Started", "Pricing", "Products"}, nil
 }
 
-func (fakeMenuStore) ListByCategory(_ context.Context, _ int64, category string) ([]store.FAQ, error) {
+func (fakeMenuStore) ListByCategory(_ context.Context, _ int64, category, _ string) ([]store.FAQ, error) {
 	return []store.FAQ{
 		{ID: 1, Question: "What is MiniPOS?", Answer: "A web POS.", Category: category},
 		{ID: 2, Question: "Do I need to install anything?", Answer: "No.", Category: category},
@@ -50,7 +50,7 @@ func (f *fakeMenuClient) AnswerCallback(context.Context, string) error {
 }
 
 func menuHandler(sub *fakeSubmitter, client *fakeMenuClient) *Handler {
-	return NewHandler(sub, fakeMenuStore{}, client, nil, nil, 1, "", discardLogger())
+	return NewHandler(sub, fakeMenuStore{}, client, nil, nil, 1, "en", "", discardLogger())
 }
 
 func post(h *Handler, body string) *httptest.ResponseRecorder {
@@ -134,7 +134,7 @@ func TestMenu_FreeTextStillGoesToSubmitter(t *testing.T) {
 
 func TestMenu_DisabledFallsBackToSubmitter(t *testing.T) {
 	sub := &fakeSubmitter{}
-	h := NewHandler(sub, nil, nil, nil, nil, 1, "", discardLogger())
+	h := NewHandler(sub, nil, nil, nil, nil, 1, "en", "", discardLogger())
 
 	post(h, `{"message":{"text":"hi","chat":{"id":5},"from":{"id":9}}}`)
 

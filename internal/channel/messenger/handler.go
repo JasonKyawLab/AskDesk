@@ -38,6 +38,7 @@ type Handler struct {
 	settings    SettingsStore  // nil uses built-in default copy
 	profiles    ProfileFetcher // nil disables customer-name lookup
 	businessID  int64
+	lang        string // FAQ language this channel serves (deployment default)
 	appSecret   string // verifies X-Hub-Signature-256; empty disables verification (dev only)
 	verifyToken string // echoed challenge token for the GET handshake
 	log         *slog.Logger
@@ -50,7 +51,10 @@ type Handler struct {
 // verification (development only). menu, menuClient, settings, and profiles may
 // be nil, which disables those features (free-typed questions still reach the
 // engine).
-func NewHandler(submitter Submitter, menu MenuStore, menuClient MenuClient, settings SettingsStore, profiles ProfileFetcher, businessID int64, appSecret, verifyToken string, log *slog.Logger) *Handler {
+func NewHandler(submitter Submitter, menu MenuStore, menuClient MenuClient, settings SettingsStore, profiles ProfileFetcher, businessID int64, language, appSecret, verifyToken string, log *slog.Logger) *Handler {
+	if language == "" {
+		language = "en"
+	}
 	return &Handler{
 		submitter:   submitter,
 		menu:        menu,
@@ -58,6 +62,7 @@ func NewHandler(submitter Submitter, menu MenuStore, menuClient MenuClient, sett
 		settings:    settings,
 		profiles:    profiles,
 		businessID:  businessID,
+		lang:        language,
 		appSecret:   appSecret,
 		verifyToken: verifyToken,
 		log:         log,
