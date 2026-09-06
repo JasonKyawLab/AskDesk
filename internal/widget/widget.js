@@ -85,8 +85,8 @@
 .adk-in button{background:$A;color:#fff;border:0;border-radius:10px;padding:0 14px;font-size:14px;cursor:pointer}\
 .adk-in button:disabled{opacity:.5}\
 @media (max-width:480px){\
-.adk-panel{width:100vw;max-width:100vw;height:100dvh;max-height:100dvh;bottom:0;right:0;left:0;border-radius:0}\
-.adk-panel.adk-right{right:0}.adk-panel.adk-left{left:0}\
+.adk-panel{top:0;bottom:0;left:0;right:0;width:auto;max-width:none;height:auto;max-height:none;border-radius:0}\
+.adk-panel.adk-right,.adk-panel.adk-left{left:0;right:0}\
 .adk-panel.adk-open ~ .adk-btn{display:none}\
 .adk-hd{padding:16px}.adk-body{padding:14px 12px}\
 }\
