@@ -48,6 +48,16 @@ type AdminAnalyticsStore interface {
 	BusyDays(ctx context.Context, businessID int64, days int) ([]store.DayBucket, error)
 }
 
+// AdminFAQStore is FAQ management for a backend's own admin UI (nil disables the
+// FAQ endpoints). Create/Update re-embed the question, so they call the AI.
+type AdminFAQStore interface {
+	List(ctx context.Context, businessID int64, language string) ([]store.FAQ, error)
+	Languages(ctx context.Context, businessID int64) ([]string, error)
+	Create(ctx context.Context, businessID int64, question, answer, category, language string) (int64, error)
+	Update(ctx context.Context, businessID, id int64, question, answer, category, language string) error
+	Delete(ctx context.Context, businessID, id int64) error
+}
+
 // AdminHandler serves the privileged /api/v1/admin endpoints so a frontend can
 // build its own support inbox. It is authenticated by an X-Admin-Key header
 // (separate from the public api_key) and intentionally sends NO CORS headers —
@@ -56,21 +66,26 @@ type AdminHandler struct {
 	store     AdminStore
 	leads     AdminLeadStore
 	analytics AdminAnalyticsStore
+	faqs      AdminFAQStore
 	deliverer Deliverer
 	auth      AdminAuth
 	log       *slog.Logger
 	mux       *http.ServeMux
 }
 
-// NewAdmin builds the admin API handler. leads and analytics may be nil.
-func NewAdmin(s AdminStore, leads AdminLeadStore, analytics AdminAnalyticsStore, deliverer Deliverer, auth AdminAuth, log *slog.Logger) *AdminHandler {
-	h := &AdminHandler{store: s, leads: leads, analytics: analytics, deliverer: deliverer, auth: auth, log: log, mux: http.NewServeMux()}
+// NewAdmin builds the admin API handler. leads, analytics and faqs may be nil.
+func NewAdmin(s AdminStore, leads AdminLeadStore, analytics AdminAnalyticsStore, faqs AdminFAQStore, deliverer Deliverer, auth AdminAuth, log *slog.Logger) *AdminHandler {
+	h := &AdminHandler{store: s, leads: leads, analytics: analytics, faqs: faqs, deliverer: deliverer, auth: auth, log: log, mux: http.NewServeMux()}
 	h.mux.HandleFunc("GET /api/v1/admin/stats", h.handleStats)
 	h.mux.HandleFunc("GET /api/v1/admin/pending", h.handlePending)
 	h.mux.HandleFunc("GET /api/v1/admin/leads", h.handleLeads)
 	h.mux.HandleFunc("GET /api/v1/admin/lead", h.handleLeadProfile)
 	h.mux.HandleFunc("POST /api/v1/admin/lead/delete", h.handleLeadDelete)
 	h.mux.HandleFunc("GET /api/v1/admin/analytics", h.handleAnalytics)
+	h.mux.HandleFunc("GET /api/v1/admin/faqs", h.handleFAQList)
+	h.mux.HandleFunc("POST /api/v1/admin/faqs", h.handleFAQCreate)
+	h.mux.HandleFunc("POST /api/v1/admin/faqs/update", h.handleFAQUpdate)
+	h.mux.HandleFunc("POST /api/v1/admin/faqs/delete", h.handleFAQDelete)
 	h.mux.HandleFunc("POST /api/v1/admin/reply", h.handleReply)
 	h.mux.HandleFunc("POST /api/v1/admin/dismiss", h.handleDismiss)
 	return h
@@ -279,6 +294,117 @@ func dayBuckets(in []store.DayBucket) []map[string]any {
 		out = append(out, map[string]any{"weekday": b.Weekday, "count": b.Count})
 	}
 	return out
+}
+
+type faqAdminItem struct {
+	ID       int64  `json:"id"`
+	Question string `json:"question"`
+	Answer   string `json:"answer"`
+	Category string `json:"category"`
+	Language string `json:"language"`
+}
+
+// handleFAQList returns a business's FAQs for one language (?lang=, default en),
+// with a `languages` list of which languages have content.
+// GET /api/v1/admin/faqs
+func (h *AdminHandler) handleFAQList(w http.ResponseWriter, r *http.Request) {
+	if h.faqs == nil {
+		writeError(w, http.StatusNotFound, "faq management unavailable")
+		return
+	}
+	id := businessID(r.Context())
+	lang := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("lang")))
+	if lang == "" {
+		lang = "en"
+	}
+	list, err := h.faqs.List(r.Context(), id, lang)
+	if err != nil {
+		h.serverError(w, "faq list", err)
+		return
+	}
+	langs, err := h.faqs.Languages(r.Context(), id)
+	if err != nil {
+		h.serverError(w, "faq languages", err)
+		return
+	}
+	out := make([]faqAdminItem, 0, len(list))
+	for _, f := range list {
+		out = append(out, faqAdminItem{ID: f.ID, Question: f.Question, Answer: f.Answer, Category: f.Category, Language: f.Language})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"language": lang, "languages": langs, "faqs": out})
+}
+
+type faqWriteRequest struct {
+	ID       int64  `json:"id"`
+	Question string `json:"question"`
+	Answer   string `json:"answer"`
+	Category string `json:"category"`
+	Language string `json:"lang"`
+}
+
+// handleFAQCreate adds a FAQ (re-embedding its question). POST /api/v1/admin/faqs
+func (h *AdminHandler) handleFAQCreate(w http.ResponseWriter, r *http.Request) {
+	if h.faqs == nil {
+		writeError(w, http.StatusNotFound, "faq management unavailable")
+		return
+	}
+	var req faqWriteRequest
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16384)).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	if strings.TrimSpace(req.Question) == "" || strings.TrimSpace(req.Answer) == "" {
+		writeError(w, http.StatusBadRequest, "question and answer are required")
+		return
+	}
+	newID, err := h.faqs.Create(r.Context(), businessID(r.Context()), req.Question, req.Answer, req.Category, req.Language)
+	if err != nil {
+		h.serverError(w, "faq create", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"id": newID})
+}
+
+// handleFAQUpdate edits a FAQ (re-embedding). POST /api/v1/admin/faqs/update
+func (h *AdminHandler) handleFAQUpdate(w http.ResponseWriter, r *http.Request) {
+	if h.faqs == nil {
+		writeError(w, http.StatusNotFound, "faq management unavailable")
+		return
+	}
+	var req faqWriteRequest
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16384)).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	if req.ID == 0 || strings.TrimSpace(req.Question) == "" || strings.TrimSpace(req.Answer) == "" {
+		writeError(w, http.StatusBadRequest, "id, question and answer are required")
+		return
+	}
+	if err := h.faqs.Update(r.Context(), businessID(r.Context()), req.ID, req.Question, req.Answer, req.Category, req.Language); err != nil {
+		h.serverError(w, "faq update", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+// handleFAQDelete removes a FAQ by id. POST /api/v1/admin/faqs/delete
+func (h *AdminHandler) handleFAQDelete(w http.ResponseWriter, r *http.Request) {
+	if h.faqs == nil {
+		writeError(w, http.StatusNotFound, "faq management unavailable")
+		return
+	}
+	var req struct {
+		ID int64 `json:"id"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&req); err != nil || req.ID == 0 {
+		writeError(w, http.StatusBadRequest, "id is required")
+		return
+	}
+	if err := h.faqs.Delete(r.Context(), businessID(r.Context()), req.ID); err != nil {
+		h.serverError(w, "faq delete", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
 type replyRequest struct {

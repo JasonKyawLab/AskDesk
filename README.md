@@ -28,6 +28,9 @@ A low-cost, self-hostable alternative to SaaS tools like Intercom and Chatbase.
   Prefer no AI at all? Run **FAQ-only mode**.
 - **Embeddable widget** — one `<script>` line adds the chat bubble to any site,
   with an optional **contact-gate** that turns support into lead capture.
+- **Multiple languages** — offer FAQs in any set of languages (e.g. English,
+  Burmese, Chinese). Each is authored natively — no machine translation — and the
+  widget shows a language switcher; the AI answers in the chosen language.
 - **Cross-channel handoff** — unanswered questions land in one shared inbox with
   the sender's channel and name. Reply from Telegram, a web page, or your own
   app; the answer routes back to the customer's channel.
@@ -44,7 +47,9 @@ A low-cost, self-hostable alternative to SaaS tools like Intercom and Chatbase.
 
 **JSON API** (`/api/v1`, `X-API-Key`): `config` · `faqs` · `ask` · `replies` ·
 `lead`. A separate **admin API** (`/api/v1/admin`, `X-Admin-Key`) lets your own
-app read the queue and reply. Embed the widget with:
+app read the queue and reply, pull leads + analytics, and **manage FAQs**
+(create/update/delete) — so you can build FAQ editing into your own admin instead
+of the magic-link page. Embed the widget with:
 
 ```html
 <script src="https://<your-host>/widget.js" data-key="<public api key>"></script>

@@ -101,7 +101,7 @@ func run() error {
 			Languages:       cfg.Languages,
 			DefaultLanguage: cfg.DefaultLanguage,
 		}, log))
-		srv.Mount("/api/v1/admin/", webapi.NewAdmin(adminStore, leadStore, analyticsStore, deliverer, bizStore, log))
+		srv.Mount("/api/v1/admin/", webapi.NewAdmin(adminStore, leadStore, analyticsStore, faqStore, deliverer, bizStore, log))
 
 		// Embeddable web widget: one-line <script> any site can drop in.
 		wdg := widget.New()

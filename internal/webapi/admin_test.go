@@ -66,7 +66,7 @@ func adminReq(h *AdminHandler, method, path, key, body string) *httptest.Respons
 }
 
 func newAdmin(s AdminStore, del Deliverer) *AdminHandler {
-	return NewAdmin(s, nil, nil, del, fakeAdminAuth{valid: "adminkey"}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	return NewAdmin(s, nil, nil, nil, del, fakeAdminAuth{valid: "adminkey"}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 }
 
 type fakeAdminLeads struct {
@@ -87,7 +87,7 @@ func (f *fakeAdminLeads) Delete(_ context.Context, _ int64, session string) erro
 
 func TestAdmin_Leads(t *testing.T) {
 	leads := &fakeAdminLeads{list: []store.Lead{{Name: "Aung", Email: "a@b.com", Phone: "09"}}}
-	h := NewAdmin(&fakeAdminStore{}, leads, nil, &fakeAdminDeliverer{}, fakeAdminAuth{valid: "adminkey"},
+	h := NewAdmin(&fakeAdminStore{}, leads, nil, nil, &fakeAdminDeliverer{}, fakeAdminAuth{valid: "adminkey"},
 		slog.New(slog.NewTextHandler(io.Discard, nil)))
 	rec := adminReq(h, http.MethodGet, "/api/v1/admin/leads", "adminkey", "")
 	if rec.Code != http.StatusOK {
@@ -174,7 +174,7 @@ func (fakeAnalytics) BusyDays(context.Context, int64, int) ([]store.DayBucket, e
 }
 
 func TestAdmin_Analytics(t *testing.T) {
-	h := NewAdmin(&fakeAdminStore{}, nil, fakeAnalytics{}, &fakeAdminDeliverer{},
+	h := NewAdmin(&fakeAdminStore{}, nil, fakeAnalytics{}, nil, &fakeAdminDeliverer{},
 		fakeAdminAuth{valid: "adminkey"}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	rec := adminReq(h, http.MethodGet, "/api/v1/admin/analytics?days=30", "adminkey", "")
 	if rec.Code != http.StatusOK {
@@ -200,7 +200,7 @@ func TestAdmin_LeadProfile(t *testing.T) {
 		Lead:     store.Lead{SessionID: "s1", Name: "Aung", Email: "a@b.com"},
 		Messages: []store.LeadMessage{{Question: "hours?", Answered: true, Channel: "widget"}},
 	}}
-	h := NewAdmin(&fakeAdminStore{}, leads, nil, &fakeAdminDeliverer{},
+	h := NewAdmin(&fakeAdminStore{}, leads, nil, nil, &fakeAdminDeliverer{},
 		fakeAdminAuth{valid: "adminkey"}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	rec := adminReq(h, http.MethodGet, "/api/v1/admin/lead?session=s1", "adminkey", "")
 	if rec.Code != http.StatusOK {
@@ -212,7 +212,7 @@ func TestAdmin_LeadProfile(t *testing.T) {
 }
 
 func TestAdmin_LeadProfileRequiresSession(t *testing.T) {
-	h := NewAdmin(&fakeAdminStore{}, &fakeAdminLeads{}, nil, &fakeAdminDeliverer{},
+	h := NewAdmin(&fakeAdminStore{}, &fakeAdminLeads{}, nil, nil, &fakeAdminDeliverer{},
 		fakeAdminAuth{valid: "adminkey"}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	rec := adminReq(h, http.MethodGet, "/api/v1/admin/lead", "adminkey", "")
 	if rec.Code != http.StatusBadRequest {
@@ -222,7 +222,7 @@ func TestAdmin_LeadProfileRequiresSession(t *testing.T) {
 
 func TestAdmin_LeadDelete(t *testing.T) {
 	leads := &fakeAdminLeads{}
-	h := NewAdmin(&fakeAdminStore{}, leads, nil, &fakeAdminDeliverer{},
+	h := NewAdmin(&fakeAdminStore{}, leads, nil, nil, &fakeAdminDeliverer{},
 		fakeAdminAuth{valid: "adminkey"}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	rec := adminReq(h, http.MethodPost, "/api/v1/admin/lead/delete", "adminkey", `{"session_id":"s1"}`)
 	if rec.Code != http.StatusOK {
@@ -234,10 +234,88 @@ func TestAdmin_LeadDelete(t *testing.T) {
 }
 
 func TestAdmin_LeadDeleteRequiresSession(t *testing.T) {
-	h := NewAdmin(&fakeAdminStore{}, &fakeAdminLeads{}, nil, &fakeAdminDeliverer{},
+	h := NewAdmin(&fakeAdminStore{}, &fakeAdminLeads{}, nil, nil, &fakeAdminDeliverer{},
 		fakeAdminAuth{valid: "adminkey"}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	rec := adminReq(h, http.MethodPost, "/api/v1/admin/lead/delete", "adminkey", `{}`)
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("status = %d, want 400 without session_id", rec.Code)
+	}
+}
+
+type fakeAdminFAQs struct {
+	list      []store.FAQ
+	created   store.FAQ
+	updatedID int64
+	deletedID int64
+}
+
+func (f *fakeAdminFAQs) List(context.Context, int64, string) ([]store.FAQ, error) { return f.list, nil }
+func (f *fakeAdminFAQs) Languages(context.Context, int64) ([]string, error) {
+	return []string{"en", "my"}, nil
+}
+func (f *fakeAdminFAQs) Create(_ context.Context, _ int64, q, a, c, l string) (int64, error) {
+	f.created = store.FAQ{Question: q, Answer: a, Category: c, Language: l}
+	return 42, nil
+}
+func (f *fakeAdminFAQs) Update(_ context.Context, _, id int64, _, _, _, _ string) error {
+	f.updatedID = id
+	return nil
+}
+func (f *fakeAdminFAQs) Delete(_ context.Context, _, id int64) error { f.deletedID = id; return nil }
+
+func newAdminFAQ(faqs AdminFAQStore) *AdminHandler {
+	return NewAdmin(&fakeAdminStore{}, nil, nil, faqs, &fakeAdminDeliverer{},
+		fakeAdminAuth{valid: "adminkey"}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+}
+
+func TestAdmin_FAQList(t *testing.T) {
+	faqs := &fakeAdminFAQs{list: []store.FAQ{{ID: 1, Question: "hours?", Answer: "9-5", Category: "General", Language: "en"}}}
+	rec := adminReq(newAdminFAQ(faqs), http.MethodGet, "/api/v1/admin/faqs?lang=en", "adminkey", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	for _, want := range []string{"hours?", `"language":"en"`, `"languages":["en","my"]`} {
+		if !strings.Contains(rec.Body.String(), want) {
+			t.Errorf("faq list missing %q: %s", want, rec.Body.String())
+		}
+	}
+}
+
+func TestAdmin_FAQCreate(t *testing.T) {
+	faqs := &fakeAdminFAQs{}
+	rec := adminReq(newAdminFAQ(faqs), http.MethodPost, "/api/v1/admin/faqs", "adminkey",
+		`{"question":"do you deliver?","answer":"yes","category":"Shipping","lang":"my"}`)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"id":42`) {
+		t.Fatalf("create failed: %d %s", rec.Code, rec.Body.String())
+	}
+	if faqs.created.Question != "do you deliver?" || faqs.created.Language != "my" {
+		t.Errorf("create not passed through: %+v", faqs.created)
+	}
+}
+
+func TestAdmin_FAQCreateRequiresFields(t *testing.T) {
+	rec := adminReq(newAdminFAQ(&fakeAdminFAQs{}), http.MethodPost, "/api/v1/admin/faqs", "adminkey", `{"question":"  "}`)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", rec.Code)
+	}
+}
+
+func TestAdmin_FAQUpdateDelete(t *testing.T) {
+	faqs := &fakeAdminFAQs{}
+	h := newAdminFAQ(faqs)
+	if rec := adminReq(h, http.MethodPost, "/api/v1/admin/faqs/update", "adminkey",
+		`{"id":7,"question":"q","answer":"a"}`); rec.Code != http.StatusOK || faqs.updatedID != 7 {
+		t.Errorf("update failed: %d updatedID=%d", rec.Code, faqs.updatedID)
+	}
+	if rec := adminReq(h, http.MethodPost, "/api/v1/admin/faqs/delete", "adminkey",
+		`{"id":9}`); rec.Code != http.StatusOK || faqs.deletedID != 9 {
+		t.Errorf("delete failed: %d deletedID=%d", rec.Code, faqs.deletedID)
+	}
+}
+
+func TestAdmin_FAQDisabledWhenNil(t *testing.T) {
+	rec := adminReq(newAdmin(&fakeAdminStore{}, &fakeAdminDeliverer{}), http.MethodGet, "/api/v1/admin/faqs", "adminkey", "")
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want 404 when faqs nil", rec.Code)
 	}
 }

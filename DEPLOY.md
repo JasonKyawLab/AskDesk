@@ -289,6 +289,15 @@ backend**, never a browser (the admin key must stay server-side).
 | `GET /api/v1/admin/analytics?days=30` | dashboard aggregates (0 = all time): `{answer_rate:{total,answered,unanswered,answered_pct}, top_questions:[…], top_unanswered:[…], busy_hours:[{hour,count}], busy_days:[{weekday,count}]}` (hours/weekdays are UTC) |
 | `POST /api/v1/admin/reply` | body `{id, message}` → delivers to the customer's channel, resolves |
 | `POST /api/v1/admin/dismiss` | body `{id}` → resolve without replying |
+| `GET /api/v1/admin/faqs?lang=en` | `{language, languages:[…], faqs:[{id, question, answer, category, language}]}` |
+| `POST /api/v1/admin/faqs` | body `{question, answer, category, lang}` → `{id}` (re-embeds; calls the AI) |
+| `POST /api/v1/admin/faqs/update` | body `{id, question, answer, category, lang}` → `{ok}` (re-embeds) |
+| `POST /api/v1/admin/faqs/delete` | body `{id}` → `{ok}` |
+
+The FAQ-write endpoints re-embed the question through Gemini, so they make an AI
+call each — fine for occasional admin edits, but keep them **backend-only** (they
+need the admin key). This lets a frontend build its own FAQ manager instead of
+the `/edit` page.
 
 The public `api_key` is rejected here — only the `admin_api_key` works. Rotate
 either key with `UPDATE businesses SET admin_api_key = gen_random_uuid()::text
