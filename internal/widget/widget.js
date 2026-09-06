@@ -72,13 +72,13 @@
 .adk-form input{width:100%;box-sizing:border-box;padding:9px;font:inherit;font-size:16px;border:1px solid #ccc;border-radius:8px;margin-bottom:8px}\
 .adk-form button{background:$A;color:#fff;border:0;border-radius:8px;padding:9px 14px;font-size:14px;cursor:pointer;width:100%}\
 .adk-tg{display:block;text-align:center;margin-top:8px;font-size:13px;color:$A;text-decoration:none}\
-.adk-foot{flex:none;text-align:center;padding:7px;font-size:11px;color:#9a9a9a;border-top:1px solid #eee;background:#fff}\
-.adk-foot a{color:#9a9a9a;text-decoration:none}\
+.adk-foot{flex:none;text-align:center;padding:6px;font-size:10px;color:#a8a8a8;border-top:1px solid #eee;background:#fff}\
+.adk-foot a{color:#a8a8a8;text-decoration:none}\
 .adk-acts{display:flex;align-items:center;gap:8px;flex:none}\
 .adk-browse{background:none;border:1px solid rgba(255,255,255,.45);color:#fff;font-size:12px;padding:4px 10px;border-radius:8px;cursor:pointer;white-space:nowrap;line-height:1.2}\
 .adk-browse:hover{background:rgba(255,255,255,.14)}\
 .adk-brand{display:inline-flex;align-items:center;vertical-align:middle;margin-left:2px}\
-.adk-brand svg{height:12px;width:auto;display:block;fill:#111}\
+.adk-brand svg{height:10px;width:auto;display:block;fill:#111}\
 .adk-in{flex:none;display:flex;gap:8px;padding:10px;border-top:1px solid #eee;background:#fff}\
 .adk-in input{flex:1;min-width:0;border:1px solid #ddd;border-radius:10px;padding:9px 11px;font:inherit;font-size:16px;outline:none}\
 .adk-in input:focus{border-color:$A;box-shadow:0 0 0 3px rgba(0,0,0,.06)}\
