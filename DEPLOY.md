@@ -107,10 +107,27 @@ data, not hardcoded. Author them per language in a `messages.json`:
 }
 ```
 
-Load with `make load-messages file=messages.json` (no AI calls — instant). A
-language with no entry falls back to the base text (default language) then the
-built-in English default. The `/edit` settings form edits the base (default-
-language) strings and preserves these overrides.
+The same file can carry a `ui` section for the widget's **UI labels** (Send,
+Browse FAQs, the contact-gate form, the input placeholder, error messages),
+keyed by language then label — so **adding a language is pure data, never code**:
+
+```json
+{
+  "ui": {
+    "en": {"send": "Send", "continue": "Continue", "email": "Your email", "…": "…"},
+    "ar": {"send": "إرسال", "continue": "متابعة", "email": "بريدك الإلكتروني", "…": "…"}
+  }
+}
+```
+
+The widget reads these from `/api/v1/config` per language; unset keys fall back
+to English. Label keys: `send, browse, topics, ask_placeholder, empty, contact,
+email, phone, continue, telegram, error, unavailable`.
+
+Load everything with `make load-messages file=messages.json` (no AI calls —
+instant). A greeting/label with no entry for a language falls back to the base
+text (default language) then the English default. The `/edit` settings form
+edits the base strings and preserves these overrides.
 
 **FAQ-only mode (no AI):** AI is **on by default** (unset = enabled). Set
 `ASKDESK_AI_ENABLED=false` to run without any AI.

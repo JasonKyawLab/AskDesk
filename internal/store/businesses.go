@@ -27,6 +27,10 @@ type BusinessSettings struct {
 	// by language code (e.g. "my", "zh"). Authored as data (via load-messages or
 	// the admin API), never hardcoded — so greetings match the business's tone.
 	Localized map[string]LocalizedStrings `json:"localized,omitempty"`
+	// UILabels holds per-language widget UI-chrome labels (Send, Continue, Your
+	// email, …), keyed by language code then label key. Data, not code: adding a
+	// new language (e.g. "ar") is a JSON edit, never a code change.
+	UILabels map[string]map[string]string `json:"ui_labels,omitempty"`
 }
 
 // LocalizedStrings are the per-language presentation strings for one language.
@@ -45,6 +49,60 @@ const (
 	DefaultAskRatePerMin   = 10
 	DefaultAskGlobalPerMin = 60
 )
+
+// DefaultUILabels are the built-in English widget UI labels — the base/source
+// language and the ultimate fallback. Every other language is data (the "ui"
+// section of messages), so adding a language never touches code.
+var DefaultUILabels = map[string]string{
+	"send":            "Send",
+	"browse":          "Browse FAQs",
+	"topics":          "Browse topics",
+	"ask_placeholder": "Type your question…",
+	"empty":           "No questions here yet.",
+	"contact":         "To reply to you personally, please share your contact:",
+	"email":           "Your email",
+	"phone":           "Phone (optional)",
+	"continue":        "Continue",
+	"telegram":        "→ Continue on Telegram instead",
+	"error":           "Sorry, something went wrong. Please try again.",
+	"unavailable":     "Chat is unavailable right now.",
+}
+
+// UILabelsFor returns the widget UI labels for a language: the English defaults
+// overlaid with whatever the business set for that language (data). Unset keys
+// fall back to English, so a partially-translated language still works.
+func (b *Businesses) UILabelsFor(ctx context.Context, businessID int64, lang string) (map[string]string, error) {
+	_, raw, err := b.load(ctx, businessID)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]string, len(DefaultUILabels))
+	for k, v := range DefaultUILabels {
+		out[k] = v
+	}
+	for k, v := range raw.UILabels[normLang(lang)] {
+		if strings.TrimSpace(v) != "" {
+			out[k] = v
+		}
+	}
+	return out, nil
+}
+
+// SetUILabels merges per-language UI labels into a business's settings (other
+// settings and other languages preserved). Used by the load-messages CLI.
+func (b *Businesses) SetUILabels(ctx context.Context, businessID int64, byLang map[string]map[string]string) error {
+	_, raw, err := b.load(ctx, businessID)
+	if err != nil {
+		return err
+	}
+	if raw.UILabels == nil {
+		raw.UILabels = map[string]map[string]string{}
+	}
+	for lang, labels := range byLang {
+		raw.UILabels[normLang(lang)] = labels
+	}
+	return b.UpdateSettings(ctx, businessID, raw)
+}
 
 func firstPositive(vals ...int) int {
 	for _, v := range vals {

@@ -27,11 +27,13 @@ import (
 	"github.com/JasonKyawLab/AskDesk/internal/store"
 )
 
-// messagesFile is the on-disk shape: each message keyed by language code.
+// messagesFile is the on-disk shape. welcome/fallback/ask are keyed by language;
+// ui is keyed by language then label (so adding a language is pure data).
 type messagesFile struct {
-	Welcome  map[string]string `json:"welcome"`
-	Fallback map[string]string `json:"fallback"`
-	Ask      map[string]string `json:"ask"`
+	Welcome  map[string]string            `json:"welcome"`
+	Fallback map[string]string            `json:"fallback"`
+	Ask      map[string]string            `json:"ask"`
+	UI       map[string]map[string]string `json:"ui"`
 }
 
 func main() {
@@ -78,8 +80,8 @@ func run() error {
 	set(mf.Fallback, func(s *store.LocalizedStrings, t string) { s.FallbackMessage = t })
 	set(mf.Ask, func(s *store.LocalizedStrings, t string) { s.AskPrompt = t })
 
-	if len(byLang) == 0 {
-		return fmt.Errorf("no messages found in %s", *path)
+	if len(byLang) == 0 && len(mf.UI) == 0 {
+		return fmt.Errorf("no messages or ui found in %s", *path)
 	}
 
 	ctx := context.Background()
@@ -93,12 +95,26 @@ func run() error {
 	}
 
 	biz := store.NewBusinesses(pool, cfg.DefaultLanguage)
-	if err := biz.SetLocalized(ctx, cfg.BusinessID, byLang); err != nil {
-		return fmt.Errorf("save messages: %w", err)
+	if len(byLang) > 0 {
+		if err := biz.SetLocalized(ctx, cfg.BusinessID, byLang); err != nil {
+			return fmt.Errorf("save messages: %w", err)
+		}
+	}
+	if len(mf.UI) > 0 {
+		if err := biz.SetUILabels(ctx, cfg.BusinessID, mf.UI); err != nil {
+			return fmt.Errorf("save ui labels: %w", err)
+		}
 	}
 
-	langs := make([]string, 0, len(byLang))
+	seen := map[string]bool{}
 	for l := range byLang {
+		seen[l] = true
+	}
+	for l := range mf.UI {
+		seen[l] = true
+	}
+	langs := make([]string, 0, len(seen))
+	for l := range seen {
 		langs = append(langs, l)
 	}
 	sort.Strings(langs)

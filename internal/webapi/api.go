@@ -34,6 +34,7 @@ type BusinessStore interface {
 	IDByAPIKey(ctx context.Context, apiKey string) (int64, error)
 	Settings(ctx context.Context, businessID int64) (store.BusinessSettings, error)
 	SettingsFor(ctx context.Context, businessID int64, language string) (store.BusinessSettings, error)
+	UILabelsFor(ctx context.Context, businessID int64, language string) (map[string]string, error)
 }
 
 // ReplyStore returns admin replies waiting for a web customer to poll.
@@ -124,15 +125,16 @@ func businessID(ctx context.Context) int64 {
 // --- endpoints ---
 
 type configResponse struct {
-	BusinessName    string   `json:"business_name"`
-	Welcome         string   `json:"welcome"`
-	AskPrompt       string   `json:"ask_prompt"`
-	Categories      []string `json:"categories"`
-	ContactCapture  string   `json:"contact_capture"`      // off|always|handoff
-	Languages       []string `json:"languages"`            // enabled FAQ languages
-	DefaultLanguage string   `json:"default_language"`     // language the widget opens in
-	Language        string   `json:"language"`             // the language this response is for
-	SourceURL       string   `json:"source_url,omitempty"` // AGPL: where the running source lives
+	BusinessName    string            `json:"business_name"`
+	Welcome         string            `json:"welcome"`
+	AskPrompt       string            `json:"ask_prompt"`
+	Categories      []string          `json:"categories"`
+	ContactCapture  string            `json:"contact_capture"`      // off|always|handoff
+	Languages       []string          `json:"languages"`            // enabled FAQ languages
+	DefaultLanguage string            `json:"default_language"`     // language the widget opens in
+	Language        string            `json:"language"`             // the language this response is for
+	UI              map[string]string `json:"ui"`                   // widget UI labels for this language
+	SourceURL       string            `json:"source_url,omitempty"` // AGPL: where the running source lives
 }
 
 // resolveLang returns the requested language if it's enabled, else the default.
@@ -159,6 +161,11 @@ func (h *Handler) handleConfig(w http.ResponseWriter, r *http.Request) {
 		h.serverError(w, "categories", err)
 		return
 	}
+	ui, err := h.biz.UILabelsFor(r.Context(), id, lang)
+	if err != nil {
+		h.serverError(w, "ui labels", err)
+		return
+	}
 	writeJSON(w, http.StatusOK, configResponse{
 		BusinessName:    settings.DisplayName,
 		Welcome:         settings.WelcomeMessage,
@@ -168,6 +175,7 @@ func (h *Handler) handleConfig(w http.ResponseWriter, r *http.Request) {
 		Languages:       h.languages,
 		DefaultLanguage: h.defaultLang,
 		Language:        lang,
+		UI:              ui,
 		SourceURL:       h.sourceURL,
 	})
 }

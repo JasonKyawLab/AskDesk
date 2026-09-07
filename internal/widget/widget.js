@@ -35,7 +35,10 @@
   if (!session) { session = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Math.random()).slice(2) + Date.now(); store("askdesk_session", session); }
   var contactDone = store("askdesk_lead_" + KEY) === "1";
 
-  var cfg = { business_name: "Support", welcome: "", contact_capture: "off", source_url: "", categories: [], languages: ["en"], default_language: "en" };
+  var cfg = { business_name: "Support", welcome: "", contact_capture: "off", source_url: "", categories: [], languages: ["en"], default_language: "en",
+    // English fallback (source language); the server replaces this with the
+    // labels for the chosen language on /config.
+    ui: { send: "Send", browse: "Browse FAQs", topics: "Browse topics", ask_placeholder: "Type your question…", empty: "No questions here yet.", contact: "To reply to you personally, please share your contact:", email: "Your email", phone: "Phone (optional)", "continue": "Continue", telegram: "→ Continue on Telegram instead", error: "Sorry, something went wrong. Please try again.", unavailable: "Chat is unavailable right now." } };
   var faqs = [];        // [{name, faqs:[{id,question,answer}]}]
   var LANG = store("askdesk_lang_" + KEY) || "";  // chosen language; resolved after config
   var lastReplyId = 0, open = false, sending = false, gating = false, pollTimer = null;
@@ -51,15 +54,11 @@
   function langLabel(code) {
     return { en: "EN", my: "မြန်မာ", zh: "中文", th: "ไทย", ja: "日本語", ko: "한국어", vi: "VI", es: "ES", fr: "FR" }[code] || code.toUpperCase();
   }
-  // Built-in UI-chrome translations (generic labels, same for every business —
-  // business content like the greeting is data-driven, this is not). Falls back
-  // to English for languages not listed here.
-  var UI = {
-    en: { send: "Send", browse: "Browse FAQs", topics: "Browse topics", ask: "Type your question…", empty: "No questions here yet.", contact: "To reply to you personally, please share your contact:", email: "Your email", phone: "Phone (optional)", cont: "Continue", tg: "→ Continue on Telegram instead", oops: "Sorry, something went wrong. Please try again.", down: "Chat is unavailable right now." },
-    my: { send: "ပို့မည်", browse: "မေးခွန်းများ ကြည့်ရန်", topics: "ခေါင်းစဉ်များ ကြည့်ရန်", ask: "သင့်မေးခွန်းကို ရိုက်ထည့်ပါ…", empty: "ဒီမှာ မေးခွန်း မရှိသေးပါ။", contact: "သင့်ကို တိုက်ရိုက် ပြန်ဆက်သွယ်နိုင်ရန် ဆက်သွယ်ရန်အချက်အလက် ပေးပါ —", email: "သင့် အီးမေးလ်", phone: "ဖုန်း (မထည့်လည်းရပါသည်)", cont: "ဆက်လုပ်မည်", tg: "→ Telegram မှ ဆက်လက် ဆောင်ရွက်ရန်", oops: "တစ်ခုခု အမှားဖြစ်သွားပါသည်။ ထပ်မံ ကြိုးစားကြည့်ပါ။", down: "ချတ်ကို ယာယီ အသုံးပြု၍ မရသေးပါ။" },
-    zh: { send: "发送", browse: "浏览常见问题", topics: "选择主题", ask: "输入您的问题…", empty: "这里还没有问题。", contact: "为了能亲自回复您，请留下您的联系方式 —", email: "您的邮箱", phone: "电话（选填）", cont: "继续", tg: "→ 改用 Telegram 联系", oops: "抱歉，出了点问题，请重试。", down: "客服暂时无法使用。" }
-  };
-  function t(k) { return (UI[LANG] || UI.en)[k] || UI.en[k]; }
+  // UI-chrome labels come from the server (cfg.ui), which serves them per
+  // language from data — so adding a language (e.g. Arabic) is a JSON edit, never
+  // a code change. cfg.ui is seeded with English (the source language) below and
+  // replaced by the server's set once /config loads.
+  function t(k) { return (cfg.ui && cfg.ui[k]) || k; }
   function el(tag, cls, txt) { var e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; }
 
   // ---- styles ----
@@ -181,9 +180,9 @@
     f.appendChild(el("p", null, t("contact")));
     var email = el("input"); email.type = "email"; email.placeholder = t("email");
     var phone = el("input"); phone.type = "text"; phone.placeholder = t("phone");
-    var ok = el("button", null, t("cont")); ok.type = "button";
+    var ok = el("button", null, t("continue")); ok.type = "button";
     f.appendChild(email); f.appendChild(phone); f.appendChild(ok);
-    if (TELEGRAM) { var tg = el("a", "adk-tg", t("tg")); tg.href = TELEGRAM; tg.target = "_blank"; f.appendChild(tg); }
+    if (TELEGRAM) { var tg = el("a", "adk-tg", t("telegram")); tg.href = TELEGRAM; tg.target = "_blank"; f.appendChild(tg); }
     body.appendChild(f); body.scrollTop = body.scrollHeight; email.focus();
     ok.onclick = function () {
       if (!email.value.trim() && !phone.value.trim()) { email.focus(); return; }
@@ -209,7 +208,7 @@
         // handoff mode: the AI couldn't answer, so collect contact for follow-up.
         if (cfg.contact_capture === "handoff" && d.answered === false && !contactDone) { askContact(function () {}); }
       })
-      .catch(function () { pending.textContent = t("oops"); })
+      .catch(function () { pending.textContent = t("error"); })
       .then(function () { sending = false; send.disabled = false; });
   }
 
@@ -295,7 +294,7 @@
   function applyChrome() {
     browse.textContent = t("browse");
     send.textContent = t("send");
-    input.placeholder = t("ask");
+    input.placeholder = t("ask_placeholder");
   }
 
   // (Re)load config + FAQs for the current language and render the opening menu.
@@ -310,7 +309,7 @@
         applyChrome();
         showMenu();
       })
-      .catch(function () { foot.innerHTML = brandHTML(""); addMsg(t("down"), "bot"); });
+      .catch(function () { foot.innerHTML = brandHTML(""); addMsg(t("unavailable"), "bot"); });
   }
 
   // ---- boot ----

@@ -48,6 +48,9 @@ func (f fakeBiz) Settings(context.Context, int64) (store.BusinessSettings, error
 func (f fakeBiz) SettingsFor(ctx context.Context, id int64, _ string) (store.BusinessSettings, error) {
 	return f.Settings(ctx, id)
 }
+func (f fakeBiz) UILabelsFor(context.Context, int64, string) (map[string]string, error) {
+	return store.DefaultUILabels, nil
+}
 
 type fakeReplies struct{ list []store.WebReply }
 
@@ -271,5 +274,13 @@ func TestAPI_ConfigExposesLanguages(t *testing.T) {
 	rec = do(h, http.MethodGet, "/api/v1/config?lang=xx", "goodkey", "")
 	if !strings.Contains(rec.Body.String(), `"language":"my"`) {
 		t.Errorf("unknown lang should fall back to default: %s", rec.Body.String())
+	}
+}
+
+func TestAPI_ConfigExposesUILabels(t *testing.T) {
+	rec := do(newAPI(fakeEngine{}, fakeFAQs{}), http.MethodGet, "/api/v1/config", "goodkey", "")
+	body := rec.Body.String()
+	if !strings.Contains(body, `"ui":`) || !strings.Contains(body, `"send":"Send"`) {
+		t.Errorf("config should expose ui labels: %s", body)
 	}
 }
