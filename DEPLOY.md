@@ -96,6 +96,22 @@ RAG retrieval, the browse menu, and the AI answer are all scoped to the chosen
 language (the model is told to answer in it). Write Burmese in **Unicode**, not
 Zawgyi. Telegram/Messenger serve `ASKDESK_DEFAULT_LANGUAGE`.
 
+**Per-language greetings** — the welcome, handoff fallback, and ask-prompt are
+data, not hardcoded. Author them per language in a `messages.json`:
+
+```json
+{
+  "welcome":  {"en": "…", "my": "…", "zh": "…"},
+  "fallback": {"en": "…", "my": "…", "zh": "…"},
+  "ask":      {"en": "…", "my": "…", "zh": "…"}
+}
+```
+
+Load with `make load-messages file=messages.json` (no AI calls — instant). A
+language with no entry falls back to the base text (default language) then the
+built-in English default. The `/edit` settings form edits the base (default-
+language) strings and preserves these overrides.
+
 **FAQ-only mode (no AI):** AI is **on by default** (unset = enabled). Set
 `ASKDESK_AI_ENABLED=false` to run without any AI.
 The button menu (tap category → question → answer) still works fully; free-typed
