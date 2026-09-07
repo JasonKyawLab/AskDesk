@@ -42,3 +42,8 @@ SETUP.txt
 
 # Tenant FAQ data (not part of the reusable product)
 minipos_faqs.json
+
+# Personal/business content — never commit
+faqs.json
+faqs.*.json
+SELF_HOST_SETUP.txt
