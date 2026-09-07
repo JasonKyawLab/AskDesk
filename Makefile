@@ -21,7 +21,7 @@ delete-webhook:
 # Add lang=my to load a language (default en); reset=1 clears only that language.
 # Requires ASKDESK_DATABASE_URL, ASKDESK_GEMINI_API_KEY, ASKDESK_BUSINESS_ID.
 load-faqs:
-	go run ./cmd/loadfaqs -file $(file) $(if $(lang),-lang $(lang),) $(if $(reset),-reset,)
+	go run ./cmd/loadfaqs -file $(file) $(if $(lang),-lang $(lang),) $(if $(delay),-delay $(delay),) $(if $(reset),-reset,)
 
 # Print a magic link to the web admin page (for web-only operators, no Telegram).
 # Requires ASKDESK_MAGIC_LINK_SECRET (and ideally ASKDESK_PUBLIC_URL).
