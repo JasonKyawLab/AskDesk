@@ -3,7 +3,9 @@
 //
 //	loadfaqs -file faqs.json [-reset] [-delay 6s]
 //
-// The JSON is an array of {category, question, answer}. Requires
+// The JSON is an array of {category, question, answer}. Each field may be a
+// plain string, or a per-language object like {"en":"…","my":"…","zh":"…"} to
+// hold every language in one file (loaded as one FAQ per language). Requires
 // ASKDESK_DATABASE_URL, ASKDESK_GEMINI_API_KEY, and ASKDESK_BUSINESS_ID.
 package main
 
@@ -27,6 +29,71 @@ type faqInput struct {
 	Question string `json:"question"`
 	Answer   string `json:"answer"`
 	Language string `json:"language"` // optional per-FAQ override; falls back to -lang
+}
+
+// flexText is a field that is either a plain string ("hello") or a per-language
+// object ({"en":"hello","my":"…"}). It lets one file hold every language.
+type flexText struct {
+	single string
+	byLang map[string]string
+	multi  bool
+}
+
+func (f *flexText) UnmarshalJSON(b []byte) error {
+	b = []byte(strings.TrimSpace(string(b)))
+	if len(b) > 0 && b[0] == '"' {
+		return json.Unmarshal(b, &f.single)
+	}
+	f.multi = true
+	return json.Unmarshal(b, &f.byLang)
+}
+
+func (f flexText) get(lang string) string {
+	if f.multi {
+		return f.byLang[lang]
+	}
+	return f.single
+}
+
+// rawFAQ accepts both the flat format ({category, question, answer}) and the
+// combined multilingual format ({category:{en,my,…}, question:{…}, answer:{…}}).
+type rawFAQ struct {
+	Category flexText `json:"category"`
+	Question flexText `json:"question"`
+	Answer   flexText `json:"answer"`
+	Language string   `json:"language"`
+}
+
+// expand turns raw FAQs into one flat faqInput per language. Flat entries yield
+// a single FAQ (using its "language" or the -lang default); multilingual entries
+// yield one FAQ per language that has both a question and an answer.
+func expand(raws []rawFAQ, defaultLang string) []faqInput {
+	var out []faqInput
+	for _, r := range raws {
+		if !r.Question.multi && !r.Answer.multi && !r.Category.multi {
+			lang := strings.ToLower(strings.TrimSpace(r.Language))
+			if lang == "" {
+				lang = defaultLang
+			}
+			out = append(out, faqInput{r.Category.single, r.Question.single, r.Answer.single, lang})
+			continue
+		}
+		langs := map[string]bool{}
+		for l := range r.Question.byLang {
+			langs[l] = true
+		}
+		for l := range r.Answer.byLang {
+			langs[l] = true
+		}
+		for l := range langs {
+			q, a := strings.TrimSpace(r.Question.get(l)), strings.TrimSpace(r.Answer.get(l))
+			if q == "" || a == "" {
+				continue // skip a language that isn't fully translated yet
+			}
+			out = append(out, faqInput{r.Category.get(l), r.Question.get(l), r.Answer.get(l), strings.ToLower(l)})
+		}
+	}
+	return out
 }
 
 func main() {
@@ -67,10 +134,11 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("read file: %w", err)
 	}
-	var faqs []faqInput
-	if err := json.Unmarshal(raw, &faqs); err != nil {
+	var raws []rawFAQ
+	if err := json.Unmarshal(raw, &raws); err != nil {
 		return fmt.Errorf("parse json: %w", err)
 	}
+	faqs := expand(raws, *lang)
 
 	ctx := context.Background()
 	log := logging.New(false, cfg.LogLevel)
@@ -85,12 +153,18 @@ func run() error {
 	}
 
 	if *reset {
-		// Reset only the language being loaded, so loading Myanmar FAQs doesn't
-		// wipe the English set (and vice-versa).
-		if _, err := pool.Exec(ctx, "DELETE FROM faqs WHERE business_id = $1 AND language = $2", cfg.BusinessID, *lang); err != nil {
-			return fmt.Errorf("reset: %w", err)
+		// Reset only the languages present in this file, so a Myanmar-only load
+		// doesn't wipe English (and a combined file refreshes all its languages).
+		seen := map[string]bool{}
+		for _, f := range faqs {
+			seen[f.Language] = true
 		}
-		fmt.Printf("Deleted existing %q FAQs for business %d.\n", *lang, cfg.BusinessID)
+		for l := range seen {
+			if _, err := pool.Exec(ctx, "DELETE FROM faqs WHERE business_id = $1 AND language = $2", cfg.BusinessID, l); err != nil {
+				return fmt.Errorf("reset %q: %w", l, err)
+			}
+			fmt.Printf("Deleted existing %q FAQs for business %d.\n", l, cfg.BusinessID)
+		}
 	}
 
 	_, embedder := app.BuildAI(cfg, log)
