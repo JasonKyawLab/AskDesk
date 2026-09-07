@@ -70,6 +70,10 @@
 .adk-msg{max-width:76%;padding:9px 12px;border-radius:16px;font-size:14px;line-height:1.5;margin-bottom:8px;white-space:pre-wrap;word-wrap:break-word}\
 .adk-bot{background:#fff;border:1px solid #ececec;color:#1a1a1a;border-bottom-left-radius:5px;box-shadow:0 1px 2px rgba(0,0,0,.05)}\
 .adk-me{background:$A;color:#fff;margin-left:auto;border-bottom-right-radius:5px}\
+.adk-typing{display:inline-flex;gap:4px;align-items:center;padding:2px 1px}\
+.adk-typing i{width:6px;height:6px;border-radius:50%;background:#9a9a9a;display:inline-block;animation:adk-blink 1.4s infinite both}\
+.adk-typing i:nth-child(2){animation-delay:.2s}.adk-typing i:nth-child(3){animation-delay:.4s}\
+@keyframes adk-blink{0%,80%,100%{opacity:.3;transform:translateY(0)}40%{opacity:1;transform:translateY(-3px)}}\
 .adk-cap{font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:#8a8a8a;margin:4px 2px 8px}\
 .adk-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}\
 .adk-chip{background:#fff;border:1px solid #dcdcdc;color:#333;border-radius:999px;padding:6px 12px;font-size:12.5px;line-height:1.3;cursor:pointer;box-shadow:0 1px 1px rgba(0,0,0,.03);transition:border-color .12s,background .12s}\
@@ -180,8 +184,16 @@
     };
   }
 
+  // A "typing" bubble with three animated dots, shown while the AI is thinking.
+  function addTyping() {
+    var m = el("div", "adk-msg adk-bot");
+    m.innerHTML = '<span class="adk-typing"><i></i><i></i><i></i></span>';
+    body.appendChild(m); body.scrollTop = body.scrollHeight;
+    return m;
+  }
+
   function ask(text) {
-    var pending = addMsg("…", "bot"); sending = true; send.disabled = true;
+    var pending = addTyping(); sending = true; send.disabled = true;
     api("/api/v1/ask", { method: "POST", body: JSON.stringify({ message: text, session_id: session, lang: LANG }) })
       .then(function (d) {
         pending.textContent = d.answer || "";
