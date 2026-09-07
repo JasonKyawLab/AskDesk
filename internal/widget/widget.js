@@ -51,6 +51,15 @@
   function langLabel(code) {
     return { en: "EN", my: "မြန်မာ", zh: "中文", th: "ไทย", ja: "日本語", ko: "한국어", vi: "VI", es: "ES", fr: "FR" }[code] || code.toUpperCase();
   }
+  // Built-in UI-chrome translations (generic labels, same for every business —
+  // business content like the greeting is data-driven, this is not). Falls back
+  // to English for languages not listed here.
+  var UI = {
+    en: { send: "Send", browse: "Browse FAQs", topics: "Browse topics", ask: "Type your question…", empty: "No questions here yet.", contact: "To reply to you personally, please share your contact:", email: "Your email", phone: "Phone (optional)", cont: "Continue", tg: "→ Continue on Telegram instead", oops: "Sorry, something went wrong. Please try again.", down: "Chat is unavailable right now." },
+    my: { send: "ပို့မည်", browse: "မေးခွန်းများ ကြည့်ရန်", topics: "ခေါင်းစဉ်များ ကြည့်ရန်", ask: "သင့်မေးခွန်းကို ရိုက်ထည့်ပါ…", empty: "ဒီမှာ မေးခွန်း မရှိသေးပါ။", contact: "သင့်ကို တိုက်ရိုက် ပြန်ဆက်သွယ်နိုင်ရန် ဆက်သွယ်ရန်အချက်အလက် ပေးပါ —", email: "သင့် အီးမေးလ်", phone: "ဖုန်း (မထည့်လည်းရပါသည်)", cont: "ဆက်လုပ်မည်", tg: "→ Telegram မှ ဆက်လက် ဆောင်ရွက်ရန်", oops: "တစ်ခုခု အမှားဖြစ်သွားပါသည်။ ထပ်မံ ကြိုးစားကြည့်ပါ။", down: "ချတ်ကို ယာယီ အသုံးပြု၍ မရသေးပါ။" },
+    zh: { send: "发送", browse: "浏览常见问题", topics: "选择主题", ask: "输入您的问题…", empty: "这里还没有问题。", contact: "为了能亲自回复您，请留下您的联系方式 —", email: "您的邮箱", phone: "电话（选填）", cont: "继续", tg: "→ 改用 Telegram 联系", oops: "抱歉，出了点问题，请重试。", down: "客服暂时无法使用。" }
+  };
+  function t(k) { return (UI[LANG] || UI.en)[k] || UI.en[k]; }
   function el(tag, cls, txt) { var e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; }
 
   // ---- styles ----
@@ -142,7 +151,7 @@
   // "Browse FAQs" button so users can jump back without scrolling up).
   function showBrowse() {
     if (!cfg.categories || !cfg.categories.length) return;
-    body.appendChild(el("div", "adk-cap", "Browse topics"));
+    body.appendChild(el("div", "adk-cap", t("topics")));
     var wrap = el("div", "adk-chips");
     cfg.categories.forEach(function (c) {
       var chip = el("button", "adk-chip", c); chip.type = "button";
@@ -155,7 +164,7 @@
   function showCategory(name) {
     addMsg(name, "me");
     var cat = faqs.filter(function (c) { return c.name === name; })[0];
-    if (!cat || !cat.faqs.length) { addMsg("No questions here yet.", "bot"); return; }
+    if (!cat || !cat.faqs.length) { addMsg(t("empty"), "bot"); return; }
     var wrap = el("div", "adk-chips");
     cat.faqs.forEach(function (f) {
       var chip = el("button", "adk-chip", f.question); chip.type = "button";
@@ -169,12 +178,12 @@
   function askContact(then) {
     gating = true;
     var f = el("div", "adk-form");
-    f.appendChild(el("p", null, "To reply to you personally, please share your contact:"));
-    var email = el("input"); email.type = "email"; email.placeholder = "Your email";
-    var phone = el("input"); phone.type = "text"; phone.placeholder = "Phone (optional)";
-    var ok = el("button", null, "Continue"); ok.type = "button";
+    f.appendChild(el("p", null, t("contact")));
+    var email = el("input"); email.type = "email"; email.placeholder = t("email");
+    var phone = el("input"); phone.type = "text"; phone.placeholder = t("phone");
+    var ok = el("button", null, t("cont")); ok.type = "button";
     f.appendChild(email); f.appendChild(phone); f.appendChild(ok);
-    if (TELEGRAM) { var tg = el("a", "adk-tg", "→ Continue on Telegram instead"); tg.href = TELEGRAM; tg.target = "_blank"; f.appendChild(tg); }
+    if (TELEGRAM) { var tg = el("a", "adk-tg", t("tg")); tg.href = TELEGRAM; tg.target = "_blank"; f.appendChild(tg); }
     body.appendChild(f); body.scrollTop = body.scrollHeight; email.focus();
     ok.onclick = function () {
       if (!email.value.trim() && !phone.value.trim()) { email.focus(); return; }
@@ -200,7 +209,7 @@
         // handoff mode: the AI couldn't answer, so collect contact for follow-up.
         if (cfg.contact_capture === "handoff" && d.answered === false && !contactDone) { askContact(function () {}); }
       })
-      .catch(function () { pending.textContent = "Sorry, something went wrong. Please try again."; })
+      .catch(function () { pending.textContent = t("oops"); })
       .then(function () { sending = false; send.disabled = false; });
   }
 
@@ -281,6 +290,14 @@
     loadThread();
   };
 
+  // Set the static UI labels (header/input) in the current language. Called on
+  // load and on every language switch so the whole widget matches.
+  function applyChrome() {
+    browse.textContent = t("browse");
+    send.textContent = t("send");
+    input.placeholder = t("ask");
+  }
+
   // (Re)load config + FAQs for the current language and render the opening menu.
   function loadThread() {
     return Promise.all([api(withLang("/api/v1/config")), api(withLang("/api/v1/faqs")).catch(function () { return { categories: [] }; })])
@@ -290,9 +307,10 @@
         title.textContent = cfg.business_name || "Support";
         foot.innerHTML = brandHTML(cfg.source_url);
         setupLangSwitcher();
+        applyChrome();
         showMenu();
       })
-      .catch(function () { foot.innerHTML = brandHTML(""); addMsg("Chat is unavailable right now.", "bot"); });
+      .catch(function () { foot.innerHTML = brandHTML(""); addMsg(t("down"), "bot"); });
   }
 
   // ---- boot ----
