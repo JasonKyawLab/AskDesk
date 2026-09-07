@@ -45,6 +45,9 @@ func (f fakeBiz) Settings(context.Context, int64) (store.BusinessSettings, error
 		AskRatePerMin: f.rate, AskGlobalPerMin: f.global,
 	}, nil
 }
+func (f fakeBiz) SettingsFor(ctx context.Context, id int64, _ string) (store.BusinessSettings, error) {
+	return f.Settings(ctx, id)
+}
 
 type fakeReplies struct{ list []store.WebReply }
 

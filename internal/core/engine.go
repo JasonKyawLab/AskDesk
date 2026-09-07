@@ -27,7 +27,7 @@ type ConversationStore interface {
 // unavailable. It is per-business and looked up fresh, so it can be edited at
 // runtime. Implementations must never fail — return a sensible default.
 type FallbackProvider interface {
-	Fallback(ctx context.Context, businessID int64) string
+	Fallback(ctx context.Context, businessID int64, language string) string
 }
 
 // ConversationRecord is a single logged interaction (maps to the conversations table).
@@ -125,7 +125,7 @@ func (e *Engine) GenerateCustomerReply(ctx context.Context, msg Message) (Reply,
 // can't confidently answer — low confidence, or a provider being unavailable.
 func (e *Engine) handoff(ctx context.Context, msg Message) Reply {
 	e.record(ctx, msg, "", nil, 0, false)
-	return Reply{Text: e.fallback.Fallback(ctx, msg.BusinessID), Answered: false}
+	return Reply{Text: e.fallback.Fallback(ctx, msg.BusinessID, msg.Language), Answered: false}
 }
 
 // record logs the conversation and, when not answered, flags it for an admin.

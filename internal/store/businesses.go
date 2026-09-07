@@ -23,9 +23,21 @@ type BusinessSettings struct {
 	// AskGlobalPerMin caps total questions per minute (protects the AI quota
 	// during a traffic spike — the knob to lower when you peak out).
 	AskGlobalPerMin int `json:"ask_global_per_min"`
+	// Localized holds per-language overrides of the presentation strings, keyed
+	// by language code (e.g. "my", "zh"). Authored as data (via load-messages or
+	// the admin API), never hardcoded — so greetings match the business's tone.
+	Localized map[string]LocalizedStrings `json:"localized,omitempty"`
 }
 
-// Defaults (used when a field is empty/zero).
+// LocalizedStrings are the per-language presentation strings for one language.
+type LocalizedStrings struct {
+	WelcomeMessage  string `json:"welcome_message,omitempty"`
+	FallbackMessage string `json:"fallback_message,omitempty"`
+	AskPrompt       string `json:"ask_prompt,omitempty"`
+}
+
+// Defaults (used when neither a per-language override nor base text is set). The
+// only strings baked into the code are English — every other language is data.
 const (
 	DefaultWelcome         = "👋 Welcome to {name} support! Pick a topic below, or just type your question."
 	DefaultFallback        = "Thanks for your message! I couldn't answer that one myself, so I've passed it to our team — we'll follow up here soon."
@@ -33,20 +45,6 @@ const (
 	DefaultAskRatePerMin   = 10
 	DefaultAskGlobalPerMin = 60
 )
-
-// resolve fills empty fields with defaults and substitutes {name}. businessName
-// is the businesses.name column, used when DisplayName is unset.
-func (s BusinessSettings) resolve(businessName string) BusinessSettings {
-	name := firstNonEmpty(s.DisplayName, businessName)
-	return BusinessSettings{
-		DisplayName:     name,
-		WelcomeMessage:  subName(firstNonEmpty(s.WelcomeMessage, DefaultWelcome), name),
-		FallbackMessage: subName(firstNonEmpty(s.FallbackMessage, DefaultFallback), name),
-		AskPrompt:       subName(firstNonEmpty(s.AskPrompt, DefaultAsk), name),
-		AskRatePerMin:   firstPositive(s.AskRatePerMin, DefaultAskRatePerMin),
-		AskGlobalPerMin: firstPositive(s.AskGlobalPerMin, DefaultAskGlobalPerMin),
-	}
-}
 
 func firstPositive(vals ...int) int {
 	for _, v := range vals {
@@ -62,12 +60,43 @@ var ErrUnknownAPIKey = errors.New("unknown api key")
 
 // Businesses reads and writes business rows and their settings.
 type Businesses struct {
-	pool *pgxpool.Pool
+	pool        *pgxpool.Pool
+	defaultLang string // deployment default language; base custom text belongs to it
 }
 
-// NewBusinesses constructs a Businesses store.
-func NewBusinesses(pool *pgxpool.Pool) *Businesses {
-	return &Businesses{pool: pool}
+// NewBusinesses constructs a Businesses store. defaultLang is the deployment's
+// default FAQ language (empty = "en") — the language the business's custom
+// welcome/fallback/ask text is assumed to be written in.
+func NewBusinesses(pool *pgxpool.Pool, defaultLang string) *Businesses {
+	if defaultLang == "" {
+		defaultLang = "en"
+	}
+	return &Businesses{pool: pool, defaultLang: strings.ToLower(defaultLang)}
+}
+
+// localize resolves settings for one language. Each string is taken from, in
+// order: the per-language override for that language (data the business set) →
+// the base text if this is the default language → the English default. Nothing
+// is hardcoded per non-English language. {name} is substituted.
+func (b *Businesses) localize(name string, raw BusinessSettings, lang string) BusinessSettings {
+	lang = normLang(lang)
+	display := firstNonEmpty(raw.DisplayName, name)
+	loc := raw.Localized[lang]
+	pick := func(override, base, def string) string {
+		baseForLang := ""
+		if lang == b.defaultLang {
+			baseForLang = base
+		}
+		return subName(firstNonEmpty(override, baseForLang, def), display)
+	}
+	return BusinessSettings{
+		DisplayName:     display,
+		WelcomeMessage:  pick(loc.WelcomeMessage, raw.WelcomeMessage, DefaultWelcome),
+		FallbackMessage: pick(loc.FallbackMessage, raw.FallbackMessage, DefaultFallback),
+		AskPrompt:       pick(loc.AskPrompt, raw.AskPrompt, DefaultAsk),
+		AskRatePerMin:   firstPositive(raw.AskRatePerMin, DefaultAskRatePerMin),
+		AskGlobalPerMin: firstPositive(raw.AskGlobalPerMin, DefaultAskGlobalPerMin),
+	}
 }
 
 // IDByAPIKey resolves a public API key to its business id (for the web API).
@@ -96,14 +125,19 @@ func (b *Businesses) idByKey(ctx context.Context, column, key string) (int64, er
 	return id, nil
 }
 
-// Settings returns fully resolved settings (defaults applied, {name} filled in)
-// — what the bot renders.
+// Settings returns fully resolved settings in the deployment's default language.
 func (b *Businesses) Settings(ctx context.Context, businessID int64) (BusinessSettings, error) {
+	return b.SettingsFor(ctx, businessID, b.defaultLang)
+}
+
+// SettingsFor returns fully resolved settings localized for lang (welcome,
+// fallback, and ask prompt in that language), with {name} filled in.
+func (b *Businesses) SettingsFor(ctx context.Context, businessID int64, lang string) (BusinessSettings, error) {
 	name, raw, err := b.load(ctx, businessID)
 	if err != nil {
 		return BusinessSettings{}, err
 	}
-	return raw.resolve(name), nil
+	return b.localize(name, raw, lang), nil
 }
 
 // RawSettings returns the stored (unresolved) settings — what the edit form
@@ -125,14 +159,36 @@ func (b *Businesses) UpdateSettings(ctx context.Context, businessID int64, s Bus
 	return nil
 }
 
-// Fallback returns the resolved fallback message, or the plain default if
-// settings can't be loaded. It implements core.FallbackProvider and never errors.
-func (b *Businesses) Fallback(ctx context.Context, businessID int64) string {
-	s, err := b.Settings(ctx, businessID)
+// Fallback returns the resolved fallback message in the given language, or the
+// localized default if settings can't be loaded. Implements core.FallbackProvider.
+func (b *Businesses) Fallback(ctx context.Context, businessID int64, lang string) string {
+	s, err := b.SettingsFor(ctx, businessID, lang)
 	if err != nil {
 		return DefaultFallback
 	}
 	return s.FallbackMessage
+}
+
+// SetLocalized writes per-language message overrides into a business's settings,
+// merging with what's stored (other settings and other languages are preserved).
+// A language whose fields are all blank is removed. Used by the load-messages CLI.
+func (b *Businesses) SetLocalized(ctx context.Context, businessID int64, byLang map[string]LocalizedStrings) error {
+	_, raw, err := b.load(ctx, businessID)
+	if err != nil {
+		return err
+	}
+	if raw.Localized == nil {
+		raw.Localized = map[string]LocalizedStrings{}
+	}
+	for lang, m := range byLang {
+		lang = normLang(lang)
+		if strings.TrimSpace(m.WelcomeMessage) == "" && strings.TrimSpace(m.FallbackMessage) == "" && strings.TrimSpace(m.AskPrompt) == "" {
+			delete(raw.Localized, lang)
+			continue
+		}
+		raw.Localized[lang] = m
+	}
+	return b.UpdateSettings(ctx, businessID, raw)
 }
 
 func (b *Businesses) load(ctx context.Context, businessID int64) (string, BusinessSettings, error) {

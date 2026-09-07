@@ -361,6 +361,9 @@ func (h *Handler) HandleSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	rate, _ := strconv.Atoi(r.FormValue("ask_rate_per_min"))
 	global, _ := strconv.Atoi(r.FormValue("ask_global_per_min"))
+	// Preserve per-language message overrides (authored via load-messages) — this
+	// form only edits the base fields, so don't drop what it doesn't show.
+	existing, _ := h.settings.RawSettings(r.Context(), claims.BusinessID)
 	s := store.BusinessSettings{
 		DisplayName:     strings.TrimSpace(r.FormValue("display_name")),
 		WelcomeMessage:  strings.TrimSpace(r.FormValue("welcome_message")),
@@ -368,6 +371,7 @@ func (h *Handler) HandleSettings(w http.ResponseWriter, r *http.Request) {
 		AskPrompt:       strings.TrimSpace(r.FormValue("ask_prompt")),
 		AskRatePerMin:   rate,
 		AskGlobalPerMin: global,
+		Localized:       existing.Localized,
 	}
 	if err := h.settings.UpdateSettings(r.Context(), claims.BusinessID, s); err != nil {
 		h.serverError(w, "update settings", err)

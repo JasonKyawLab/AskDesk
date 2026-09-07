@@ -71,7 +71,7 @@ func run() error {
 		// Shared components — one engine, reused by every channel.
 		genProvider, embedder := app.BuildAI(cfg, log)
 		faqStore := store.NewFAQs(pool, embedder)
-		bizStore := store.NewBusinesses(pool)
+		bizStore := store.NewBusinesses(pool, cfg.DefaultLanguage)
 		adminStore := store.NewAdmins(pool)
 		webReplies := store.NewWebReplies(pool)
 		leadStore := store.NewLeads(pool)

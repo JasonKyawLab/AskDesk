@@ -33,6 +33,7 @@ type FAQStore interface {
 type BusinessStore interface {
 	IDByAPIKey(ctx context.Context, apiKey string) (int64, error)
 	Settings(ctx context.Context, businessID int64) (store.BusinessSettings, error)
+	SettingsFor(ctx context.Context, businessID int64, language string) (store.BusinessSettings, error)
 }
 
 // ReplyStore returns admin replies waiting for a web customer to poll.
@@ -148,7 +149,7 @@ func (h *Handler) resolveLang(requested string) string {
 func (h *Handler) handleConfig(w http.ResponseWriter, r *http.Request) {
 	id := businessID(r.Context())
 	lang := h.resolveLang(r.URL.Query().Get("lang"))
-	settings, err := h.biz.Settings(r.Context(), id)
+	settings, err := h.biz.SettingsFor(r.Context(), id, lang)
 	if err != nil {
 		h.serverError(w, "settings", err)
 		return
@@ -231,10 +232,12 @@ func (h *Handler) handleAsk(w http.ResponseWriter, r *http.Request) {
 
 	id := businessID(r.Context())
 	session := sessionOrAnon(req.SessionID)
+	lang := h.resolveLang(req.Language)
 
 	// Rate limits (per-business, adjustable at runtime via settings). Falls back
-	// to defaults if settings can't be loaded.
-	settings, _ := h.biz.Settings(r.Context(), id)
+	// to defaults if settings can't be loaded. Localized so a rate-limit or busy
+	// message is in the visitor's language.
+	settings, _ := h.biz.SettingsFor(r.Context(), id, lang)
 	if !h.limiter.allow(globalKey(id), settings.AskGlobalPerMin) {
 		writeJSON(w, http.StatusTooManyRequests, askResponse{Answer: settings.FallbackMessage, Answered: false})
 		return
@@ -250,7 +253,7 @@ func (h *Handler) handleAsk(w http.ResponseWriter, r *http.Request) {
 		Channel:    core.ChannelWidget,
 		UserID:     session,
 		Text:       req.Message,
-		Language:   h.resolveLang(req.Language),
+		Language:   lang,
 	})
 	if err != nil {
 		h.serverError(w, "generate reply", err)

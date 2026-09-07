@@ -1,4 +1,4 @@
-.PHONY: run worker debug build test vet tidy fmt check db-up db-down migrate-up migrate-down migrate-create seed set-webhook delete-webhook docker-build load-faqs
+.PHONY: run worker debug build test vet tidy fmt check db-up db-down migrate-up migrate-down migrate-create seed set-webhook delete-webhook docker-build load-faqs load-messages
 
 # Seed the first business + admin. Requires ASKDESK_DATABASE_URL and psql.
 # Usage: make seed BUSINESS_NAME=minipos ADMIN_TG_ID=123456789
@@ -22,6 +22,11 @@ delete-webhook:
 # Requires ASKDESK_DATABASE_URL, ASKDESK_GEMINI_API_KEY, ASKDESK_BUSINESS_ID.
 load-faqs:
 	go run ./cmd/loadfaqs -file $(file) $(if $(lang),-lang $(lang),) $(if $(delay),-delay $(delay),) $(if $(reset),-reset,)
+
+# Load per-language greeting/fallback/ask messages. Usage: make load-messages file=messages.json
+# Requires ASKDESK_DATABASE_URL and ASKDESK_BUSINESS_ID. No AI calls.
+load-messages:
+	go run ./cmd/loadmessages -file $(file)
 
 # Print a magic link to the web admin page (for web-only operators, no Telegram).
 # Requires ASKDESK_MAGIC_LINK_SECRET (and ideally ASKDESK_PUBLIC_URL).

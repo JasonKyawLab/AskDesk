@@ -49,7 +49,7 @@ func (f *fakeStore) EnqueueUnanswered(context.Context, int64, string) error {
 
 type fakeFallback struct{ msg string }
 
-func (f fakeFallback) Fallback(context.Context, int64) string { return f.msg }
+func (f fakeFallback) Fallback(context.Context, int64, string) string { return f.msg }
 
 func newTestEngine(r Retriever, ai AIProvider, s ConversationStore) *Engine {
 	return NewEngine(r, ai, s, fakeFallback{"fallback"}, slog.New(slog.NewTextHandler(io.Discard, nil)), true)

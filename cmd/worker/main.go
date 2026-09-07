@@ -58,7 +58,7 @@ func run() error {
 		store.NewFAQs(pool, embedder),
 		genProvider,
 		conversations,
-		store.NewBusinesses(pool),
+		store.NewBusinesses(pool, cfg.DefaultLanguage),
 		log,
 		cfg.AIEnabled,
 	)
