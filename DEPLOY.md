@@ -279,6 +279,32 @@ the header), `data-position` (`left` or `right`, default `right`),
 `data-telegram` (a `t.me/...` link for the "continue on Telegram" handoff).
 Preview it at `https://<your-app>/widget/demo`.
 
+> **⚠️ Ad-blockers & privacy shields (third-party blocking).** Because the widget
+> loads from your AskDesk host (a *different* domain than the site embedding it),
+> privacy tools — **Brave Shields, uBlock Origin, Safari/iOS content blockers,
+> Firefox strict tracking protection** — can treat it as a third-party tracker and
+> block the script and its API calls. The chat bubble then simply doesn't appear.
+> This affects every third-party chat widget (Intercom, Crisp, …), not just this
+> one, and the visitor controls the blocker — you can't override it per browser.
+>
+> **Fix: serve the widget first-party** by reverse-proxying it through the
+> embedding site's own domain, so blockers see it as the site's own code:
+>
+> - proxy `https://<your-site>/chat/widget.js` → `https://<your-app>/widget.js`
+> - proxy `https://<your-site>/chat/api/v1/*` → `https://<your-app>/api/v1/*`
+>   (forward the method, query, body, and the `X-API-Key` header)
+>
+> then embed with the first-party paths — the API base is relative, so every call
+> stays same-origin:
+>
+> ```html
+> <script src="/chat/widget.js" data-key="<business api_key>" data-api="/chat"></script>
+> ```
+>
+> A visitor who blocks *all* scripts (not the default) can still hide it, but
+> first-party serving handles the default Shields, uBlock, and Safari blockers —
+> essentially everyone.
+
 **Contact capture (lead capture):** set `ASKDESK_CONTACT_CAPTURE` to one of:
 
 | Value | Behaviour | Good for |
